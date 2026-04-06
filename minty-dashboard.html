@@ -3,520 +3,443 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Minty Cards — Live Dashboard</title>
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<title>Minty Cards — Arbitrage Hub</title>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg:#07090a;--s1:#0c1012;--s2:#111618;--border:#1c2428;--border2:#243035;
-  --mint:#00e5a0;--mint2:#00b87a;--gold:#f0c040;--red:#ff4060;--blue:#38b6ff;--orange:#ff8c00;
-  --text:#dde8ec;--muted:#4a6070;--muted2:#2a3c48;
+  --bg:#f6f7fb;--white:#ffffff;--border:#e6e9ef;--border2:#d0d5e0;
+  --text:#1a1f36;--sub:#5c6479;--muted:#9099b0;
+  --green:#00c875;--green2:#00a85e;--green-bg:#e6faf2;--green-border:#b3efd5;
+  --purple:#6161ff;--purple-bg:#eeecff;--purple-border:#c8c6ff;
+  --orange:#ff7b47;--orange-bg:#fff0eb;--orange-border:#ffd0be;
+  --red:#e8344e;--red-bg:#fff0f2;--red-border:#ffccd3;
+  --blue:#0085ff;--blue-bg:#e6f3ff;--blue-border:#b3d9ff;
+  --yellow:#ffcb00;--yellow-bg:#fffbe6;
+  --shadow-sm:0 1px 3px rgba(26,31,54,0.08),0 1px 2px rgba(26,31,54,0.04);
+  --shadow-md:0 4px 16px rgba(26,31,54,0.10),0 1px 4px rgba(26,31,54,0.06);
+  --r:12px;--rs:8px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:'DM Mono',monospace;min-height:100vh;overflow-x:hidden}
-body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(0,229,160,0.06),transparent),linear-gradient(rgba(0,229,160,0.012) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,160,0.012) 1px,transparent 1px);background-size:100% 100%,48px 48px,48px 48px;pointer-events:none;z-index:0}
-.wrap{max-width:1200px;margin:0 auto;padding:0 20px;position:relative;z-index:2}
+body{background:var(--bg);color:var(--text);font-family:'Figtree',sans-serif;min-height:100vh;font-size:14px}
 
-/* HEADER */
-header{display:flex;align-items:center;justify-content:space-between;padding:22px 0 18px;border-bottom:1px solid var(--border);margin-bottom:22px}
-.logo{display:flex;align-items:center;gap:12px}
-.logo-icon{width:34px;height:34px;background:var(--mint);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1rem;box-shadow:0 0 18px rgba(0,229,160,0.3)}
-.logo-text{font-family:'Bebas Neue',sans-serif;font-size:1.7rem;letter-spacing:3px}
-.logo-sub{font-size:0.52rem;letter-spacing:4px;color:var(--mint);margin-top:-3px}
-.header-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.badge{display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:100px;font-size:0.56rem;letter-spacing:2px;border:1px solid}
-.badge-green{border-color:rgba(0,229,160,0.3);color:var(--mint);background:rgba(0,229,160,0.06)}
-.badge-red{border-color:rgba(255,64,96,0.3);color:var(--red);background:rgba(255,64,96,0.06)}
-.badge-gray{border-color:var(--border2);color:var(--muted);background:var(--s2)}
-.pulse{width:6px;height:6px;border-radius:50%;background:currentColor;animation:blink 1.8s ease-in-out infinite}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:0.2}}
+/* SIDEBAR */
+.sidebar{position:fixed;top:0;left:0;bottom:0;width:220px;background:var(--white);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:100;box-shadow:var(--shadow-sm)}
+.sb-logo{padding:18px 18px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.logo-mark{width:32px;height:32px;background:linear-gradient(135deg,#00c875,#00a85e);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:1rem;box-shadow:0 2px 8px rgba(0,200,117,0.35);flex-shrink:0}
+.logo-name{font-weight:800;font-size:0.92rem;color:var(--text);letter-spacing:-0.3px}
+.logo-tag{font-size:0.62rem;color:var(--muted);font-weight:500}
+.sb-nav{flex:1;padding:10px 8px;display:flex;flex-direction:column;gap:2px}
+.nav-sec{font-size:0.58rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);padding:12px 10px 5px}
+.nav-item{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:7px;cursor:pointer;transition:all 0.15s;font-weight:500;font-size:0.82rem;color:var(--sub);user-select:none}
+.nav-item:hover{background:var(--bg);color:var(--text)}
+.nav-item.active{background:var(--green-bg);color:var(--green2);font-weight:600}
+.nav-icon{font-size:0.95rem;width:18px;text-align:center}
+.nav-badge{margin-left:auto;background:var(--green);color:white;font-size:0.58rem;font-weight:700;padding:2px 7px;border-radius:100px}
+.nav-badge.blue{background:var(--blue)}
+.sb-bottom{padding:12px;border-top:1px solid var(--border)}
+.agent-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--rs);padding:10px 12px}
+.ac-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.ac-label{font-size:0.7rem;font-weight:600;color:var(--text)}
+.spill{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:100px;font-size:0.58rem;font-weight:700}
+.spill.live{background:var(--green-bg);color:var(--green2);border:1px solid var(--green-border)}
+.spill.offline{background:var(--red-bg);color:var(--red);border:1px solid var(--red-border)}
+.spill.scanning{background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-border)}
+.sdot{width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.7)}}
+.ac-next{font-size:0.63rem;color:var(--muted)}
+.ac-next b{color:var(--text)}
 
-/* AGENT URL BAR */
-.url-bar{display:flex;gap:10px;margin-bottom:22px;align-items:center}
-.url-input{flex:1;background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text);font-family:'DM Mono',monospace;font-size:0.72rem;outline:none;transition:border-color 0.2s}
-.url-input:focus{border-color:var(--mint)}
-.btn{padding:10px 20px;border-radius:8px;border:none;font-family:'DM Mono',monospace;font-size:0.66rem;letter-spacing:2px;cursor:pointer;transition:all 0.2s;text-transform:uppercase;white-space:nowrap}
-.btn-mint{background:var(--mint);color:#07090a;font-weight:500}
-.btn-mint:hover{background:var(--mint2);box-shadow:0 4px 16px rgba(0,229,160,0.25)}
-.btn-ghost{background:var(--s1);border:1px solid var(--border);color:var(--text)}
-.btn-ghost:hover{border-color:var(--mint);color:var(--mint)}
+/* MAIN */
+.main{margin-left:220px;min-height:100vh;display:flex;flex-direction:column}
+
+/* TOPBAR */
+.topbar{background:var(--white);border-bottom:1px solid var(--border);padding:0 24px;height:54px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;box-shadow:var(--shadow-sm)}
+.tb-left{display:flex;align-items:center;gap:12px}
+.page-title{font-size:1rem;font-weight:700;color:var(--text)}
+.breadcrumb{font-size:0.7rem;color:var(--muted)}
+.tb-right{display:flex;align-items:center;gap:8px}
+.url-inp{background:var(--bg);border:1.5px solid var(--border);border-radius:7px;padding:7px 13px;font-family:'Figtree',sans-serif;font-size:0.76rem;color:var(--text);outline:none;width:280px;transition:border-color 0.15s}
+.url-inp:focus{border-color:var(--green);background:var(--white)}
+.tbtn{display:flex;align-items:center;gap:6px;padding:7px 15px;border-radius:7px;font-family:'Figtree',sans-serif;font-size:0.78rem;font-weight:600;cursor:pointer;border:none;transition:all 0.15s;white-space:nowrap}
+.tbtn-primary{background:var(--green);color:white;box-shadow:0 2px 8px rgba(0,200,117,0.28)}
+.tbtn-primary:hover{background:var(--green2);transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,200,117,0.38)}
+.tbtn-primary:disabled{background:#b8e8d4;box-shadow:none;cursor:not-allowed;transform:none}
+.tbtn-ghost{background:var(--white);color:var(--text);border:1.5px solid var(--border2)}
+.tbtn-ghost:hover{background:var(--bg);border-color:var(--green);color:var(--green2)}
+
+/* CONTENT */
+.content{padding:22px 24px;flex:1}
 
 /* STATS */
-.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:22px}
-.stat{background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:14px 12px;text-align:center;transition:border-color 0.3s}
-.stat.updated{border-color:var(--mint);animation:flash 0.5s ease}
-@keyframes flash{0%{background:rgba(0,229,160,0.1)}100%{background:var(--s1)}}
-.stat-n{font-family:'Bebas Neue',sans-serif;font-size:1.9rem;line-height:1;margin-bottom:3px}
-.stat-l{font-size:0.5rem;letter-spacing:3px;color:var(--muted);text-transform:uppercase}
-.stat:nth-child(1) .stat-n{color:var(--mint)}
-.stat:nth-child(2) .stat-n{color:var(--gold)}
-.stat:nth-child(3) .stat-n{color:var(--blue)}
-.stat:nth-child(4) .stat-n{color:var(--orange)}
-.stat:nth-child(5) .stat-n{color:var(--red)}
-
-/* MAIN GRID */
-.main-grid{display:grid;grid-template-columns:1fr 380px;gap:16px;margin-bottom:22px}
-
-/* DEALS PANEL */
-.panel{background:var(--s1);border:1px solid var(--border);border-radius:12px;overflow:hidden}
-.panel-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border);background:rgba(0,229,160,0.02)}
-.panel-title{font-size:0.58rem;letter-spacing:4px;color:var(--mint);text-transform:uppercase}
-.panel-meta{font-size:0.56rem;color:var(--muted);letter-spacing:1px}
-
-/* DEAL CARDS */
-.deals-body{padding:14px;display:flex;flex-direction:column;gap:10px;max-height:520px;overflow-y:auto}
-.deals-body::-webkit-scrollbar{width:3px}
-.deals-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
-.deal-card{background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:14px;transition:all 0.2s;animation:slideIn 0.3s ease}
-@keyframes slideIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
-.deal-card:hover{border-color:var(--border2);transform:translateX(3px)}
-.deal-card.HOT{border-left:3px solid var(--red)}
-.deal-card.GOOD{border-left:3px solid var(--mint)}
-.dc-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px}
-.dc-name{font-family:'Syne',sans-serif;font-weight:700;font-size:0.88rem;color:#fff;line-height:1.2}
-.dc-meta{font-size:0.55rem;color:var(--muted);margin-top:2px}
-.dc-tag{font-size:0.5rem;letter-spacing:2px;padding:2px 8px;border-radius:100px;white-space:nowrap;flex-shrink:0;margin-left:8px;margin-top:2px}
-.tag-hot{background:rgba(255,64,96,0.15);color:var(--red);border:1px solid rgba(255,64,96,0.3)}
-.tag-good{background:rgba(0,229,160,0.1);color:var(--mint);border:1px solid rgba(0,229,160,0.25)}
-.tag-sealed{background:rgba(56,182,255,0.1);color:var(--blue);border:1px solid rgba(56,182,255,0.25)}
-.dc-prices{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;font-size:0.6rem}
-.dc-price-box{background:var(--bg);border-radius:6px;padding:7px 10px}
-.dc-price-label{color:var(--muted);font-size:0.52rem;letter-spacing:2px;margin-bottom:2px}
-.dc-price-val{font-family:'Bebas Neue',sans-serif;font-size:1.3rem;line-height:1}
-.dc-price-val.buy{color:var(--gold)}
-.dc-price-val.profit{color:var(--mint)}
-.dc-price-val.loss{color:var(--red)}
-.dc-buy{display:block;width:100%;padding:8px;background:var(--mint);color:#07090a;border:none;border-radius:7px;font-family:'DM Mono',monospace;font-size:0.6rem;letter-spacing:2px;cursor:pointer;text-align:center;text-decoration:none;transition:all 0.2s;font-weight:500}
-.dc-buy:hover{background:var(--mint2);box-shadow:0 4px 14px rgba(0,229,160,0.3)}
-.dc-platform{font-size:0.5rem;letter-spacing:2px;color:var(--muted);margin-bottom:6px;text-transform:uppercase}
-
-/* LOG PANEL */
-.log-body{height:520px;overflow-y:auto;padding:10px 16px;font-size:0.63rem}
-.log-body::-webkit-scrollbar{width:3px}
-.log-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
-.log-line{display:flex;gap:10px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.025);animation:fadeIn 0.2s ease}
-@keyframes fadeIn{from{opacity:0}to{opacity:1}}
-.lt{color:var(--muted);min-width:54px;font-size:0.58rem;flex-shrink:0}
-.lk{min-width:58px;font-weight:500;font-size:0.58rem;letter-spacing:1px;flex-shrink:0}
-.lk.SCAN{color:var(--blue)}.lk.FIND{color:var(--mint)}.lk.DEAL{color:var(--gold)}.lk.ALERT{color:var(--red)}.lk.SYS{color:var(--muted)}
-.lm{flex:1;color:var(--text);line-height:1.5}
-.log-empty{height:100%;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:0.65rem;letter-spacing:2px;text-align:center;flex-direction:column;gap:10px}
-.log-empty-icon{font-size:2rem;opacity:0.3}
-
-/* SEALED DEALS */
-.sealed-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;padding:14px}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}
+.scard{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;box-shadow:var(--shadow-sm);transition:box-shadow 0.2s,transform 0.2s;position:relative;overflow:hidden}
+.scard:hover{box-shadow:var(--shadow-md);transform:translateY(-2px)}
+.scard::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.scard:nth-child(1)::before{background:var(--green)}
+.scard:nth-child(2)::before{background:var(--purple)}
+.scard:nth-child(3)::before{background:var(--blue)}
+.scard:nth-child(4)::before{background:var(--orange)}
+.scard:nth-child(5)::before{background:var(--red)}
+.sc-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px}
+.sc-icon{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:0.95rem}
+.ico-g{background:var(--green-bg)}.ico-p{background:var(--purple-bg)}.ico-b{background:var(--blue-bg)}.ico-o{background:var(--orange-bg)}.ico-r{background:var(--red-bg)}
+.sc-n{font-size:1.8rem;font-weight:800;color:var(--text);line-height:1;margin-bottom:2px;letter-spacing:-1px}
+.sc-l{font-size:0.68rem;font-weight:500;color:var(--muted)}
 
 /* TABS */
-.tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:4px}
-.tab{flex:1;padding:9px;text-align:center;font-size:0.6rem;letter-spacing:3px;color:var(--muted);border-radius:7px;cursor:pointer;transition:all 0.2s;text-transform:uppercase;user-select:none}
-.tab.active{background:var(--s2);color:var(--text);border:1px solid var(--border2)}
+.tabs{display:flex;gap:3px;margin-bottom:18px;background:var(--white);border:1px solid var(--border);border-radius:9px;padding:3px;width:fit-content;box-shadow:var(--shadow-sm)}
+.tab{padding:7px 16px;border-radius:7px;font-size:0.8rem;font-weight:600;color:var(--sub);cursor:pointer;transition:all 0.15s;user-select:none;display:flex;align-items:center;gap:6px}
+.tab:hover{color:var(--text);background:var(--bg)}
+.tab.active{background:var(--green);color:white;box-shadow:0 2px 8px rgba(0,200,117,0.28)}
+.tcnt{background:rgba(255,255,255,0.28);color:white;font-size:0.6rem;padding:1px 7px;border-radius:100px;font-weight:700}
+.tab:not(.active) .tcnt{background:var(--border);color:var(--sub)}
+
+/* TWO COL */
+.two-col{display:grid;grid-template-columns:1fr 300px;gap:14px}
+
+/* PANEL */
+.panel{background:var(--white);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow-sm);overflow:hidden}
+.panel-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)}
+.panel-title{font-size:0.86rem;font-weight:700;color:var(--text);display:flex;align-items:center;gap:7px}
+.panel-meta{font-size:0.68rem;color:var(--muted);font-weight:500}
+
+/* DEAL ROWS */
+.deals-list{display:flex;flex-direction:column}
+.deal-row{display:grid;grid-template-columns:auto 1fr auto auto;gap:14px;align-items:center;padding:14px 18px;border-bottom:1px solid var(--border);transition:background 0.12s;animation:rowIn 0.25s ease}
+@keyframes rowIn{from{opacity:0;transform:translateX(-5px)}to{opacity:1;transform:translateX(0)}}
+.deal-row:last-child{border-bottom:none}
+.deal-row:hover{background:#fafbfd}
+.rar-icon{width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:1.05rem;flex-shrink:0}
+.bg-sar{background:linear-gradient(135deg,#fff0eb,#ffe0d0)}
+.bg-sir{background:linear-gradient(135deg,#f0eeff,#e0dbff)}
+.bg-ir{background:linear-gradient(135deg,#fffbe6,#fff3b0)}
+.bg-rainbow{background:linear-gradient(135deg,#e6fff6,#d0ffec)}
+.dr-name{font-size:0.87rem;font-weight:700;color:var(--text);margin-bottom:2px}
+.dr-sub{font-size:0.68rem;color:var(--muted);font-weight:500}
+.price-stack{text-align:right}
+.ps-label{font-size:0.58rem;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;color:var(--muted);margin-bottom:1px}
+.ps-val{font-size:0.95rem;font-weight:800;letter-spacing:-0.5px}
+.pv-buy{color:var(--orange)}.pv-profit{color:var(--green2)}.pv-loss{color:var(--red)}.pv-market{color:var(--text)}
+.dr-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.pct-pill{padding:3px 10px;border-radius:100px;font-size:0.67rem;font-weight:700;white-space:nowrap}
+.pp-hot{background:var(--red-bg);color:var(--red);border:1.5px solid var(--red-border)}
+.pp-good{background:var(--green-bg);color:var(--green2);border:1.5px solid var(--green-border)}
+.pp-fair{background:var(--yellow-bg);color:#8a6800;border:1.5px solid #ffe066}
+.buy-pill{display:flex;align-items:center;justify-content:center;padding:8px 16px;background:var(--green);color:white;border-radius:7px;font-size:0.72rem;font-weight:700;text-decoration:none;transition:all 0.15s;white-space:nowrap;box-shadow:0 2px 6px rgba(0,200,117,0.22)}
+.buy-pill:hover{background:var(--green2);box-shadow:0 4px 12px rgba(0,200,117,0.35);transform:translateY(-1px)}
+
+/* LOG */
+.log-scroll{height:460px;overflow-y:auto;padding:6px 0}
+.log-scroll::-webkit-scrollbar{width:3px}
+.log-scroll::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.log-entry{display:flex;gap:8px;padding:4px 14px;transition:background 0.1s;animation:fadeIn 0.2s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.log-entry:hover{background:var(--bg)}
+.le-t{font-size:0.62rem;color:var(--muted);min-width:50px;flex-shrink:0;padding-top:1px;font-weight:500}
+.le-b{font-size:0.56rem;font-weight:700;padding:2px 7px;border-radius:100px;min-width:48px;text-align:center;flex-shrink:0;height:fit-content;margin-top:2px}
+.lb-SCAN{background:var(--blue-bg);color:var(--blue)}
+.lb-FIND{background:var(--green-bg);color:var(--green2)}
+.lb-DEAL{background:var(--yellow-bg);color:#8a6800}
+.lb-ALERT{background:var(--red-bg);color:var(--red)}
+.lb-SYS{background:var(--bg);color:var(--muted);border:1px solid var(--border)}
+.le-m{font-size:0.72rem;color:var(--sub);flex:1;line-height:1.5}
+.le-m.deal{color:var(--text);font-weight:600}
+
+/* SEALED */
+.sealed-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;padding:14px}
+.s-card{background:var(--bg);border:1.5px solid var(--border);border-radius:var(--r);padding:14px;transition:all 0.2s;animation:rowIn 0.25s ease}
+.s-card:hover{box-shadow:var(--shadow-md);transform:translateY(-2px);border-color:var(--green)}
+.sct-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:100px;font-size:0.6rem;font-weight:700;margin-bottom:9px;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-border)}
+.sc-name{font-size:0.88rem;font-weight:700;color:var(--text);margin-bottom:2px;line-height:1.3}
+.sc-set{font-size:0.67rem;color:var(--muted);margin-bottom:10px;font-weight:500}
+.sc-pr{display:flex;align-items:baseline;gap:7px;margin-bottom:3px}
+.sc-price{font-size:1.5rem;font-weight:800;color:var(--orange);letter-spacing:-0.8px}
+.sc-mkt{font-size:0.67rem;color:var(--muted);text-decoration:line-through}
+.sc-profit{font-size:0.72rem;font-weight:700;color:var(--green2);margin-bottom:10px}
+.sc-buy{display:block;width:100%;padding:8px;background:var(--white);border:1.5px solid var(--green);border-radius:7px;color:var(--green2);font-family:'Figtree',sans-serif;font-size:0.72rem;font-weight:700;cursor:pointer;text-align:center;text-decoration:none;transition:all 0.15s}
+.sc-buy:hover{background:var(--green);color:white;box-shadow:0 4px 12px rgba(0,200,117,0.28)}
 
 /* EMPTY */
-.empty{text-align:center;padding:48px 20px;color:var(--muted);grid-column:1/-1}
-.empty-icon{font-size:2.5rem;margin-bottom:10px;opacity:0.25}
-.empty-text{font-size:0.65rem;letter-spacing:2px}
+.empty-state{text-align:center;padding:52px 20px;color:var(--muted);grid-column:1/-1}
+.empty-icon{font-size:2.5rem;margin-bottom:10px;opacity:0.35}
+.empty-title{font-size:0.86rem;font-weight:700;color:var(--sub);margin-bottom:5px}
+.empty-sub{font-size:0.72rem;line-height:1.7}
 
-/* LAST SCAN */
-.last-scan-bar{display:flex;align-items:center;justify-content:space-between;background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:10px 16px;margin-bottom:20px;font-size:0.62rem}
-.ls-left{color:var(--muted)}
-.ls-left b{color:var(--text)}
-.ls-right{display:flex;gap:8px}
+/* CONN ERROR */
+.conn-err{background:var(--red-bg);border:1.5px solid var(--red-border);border-radius:var(--rs);padding:11px 15px;font-size:0.76rem;color:var(--red);font-weight:500;margin-bottom:18px;display:flex;align-items:center;gap:8px}
+.conn-err.hidden{display:none}
 
-/* CONNECTION ERROR */
-.conn-error{background:rgba(255,64,96,0.08);border:1px solid rgba(255,64,96,0.25);border-radius:8px;padding:14px 18px;margin-bottom:16px;font-size:0.65rem;color:var(--red);display:none}
+/* FULL LOG */
+.full-log{height:580px;overflow-y:auto}
+.full-log::-webkit-scrollbar{width:3px}
+.full-log::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
 
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
 
-@media(max-width:900px){
-  .main-grid{grid-template-columns:1fr}
+@media(max-width:1100px){
+  .sidebar{width:62px}
+  .sb-logo .logo-name,.sb-logo .logo-tag,.nav-item>span:not(.nav-icon),.nav-sec,.agent-card{display:none}
+  .nav-item{justify-content:center;padding:10px}
+  .main{margin-left:62px}
+  .two-col{grid-template-columns:1fr}
   .stats{grid-template-columns:repeat(3,1fr)}
+  .url-inp{width:200px}
 }
-@media(max-width:500px){
+@media(max-width:600px){
   .stats{grid-template-columns:repeat(2,1fr)}
+  .topbar{padding:0 14px}
+  .content{padding:14px}
+  .url-inp{display:none}
+  .deal-row{grid-template-columns:auto 1fr auto}
 }
 </style>
 </head>
 <body>
-<div class="wrap">
 
-<!-- HEADER -->
-<header>
-  <div class="logo">
-    <div class="logo-icon">🌿</div>
-    <div>
-      <div class="logo-text">MINTY CARDS</div>
-      <div class="logo-sub">// LIVE ARBITRAGE DASHBOARD</div>
+<aside class="sidebar">
+  <div class="sb-logo">
+    <div class="logo-mark">🌿</div>
+    <div><div class="logo-name">Minty Cards</div><div class="logo-tag">Arbitrage Hub</div></div>
+  </div>
+  <nav class="sb-nav">
+    <div class="nav-sec">Main</div>
+    <div class="nav-item active" onclick="switchTab('singles')"><span class="nav-icon">⚡</span><span>Singles</span><span class="nav-badge" id="singlesBadge">0</span></div>
+    <div class="nav-item" onclick="switchTab('sealed')"><span class="nav-icon">📦</span><span>Sealed</span><span class="nav-badge blue" id="sealedBadge">0</span></div>
+    <div class="nav-item" onclick="switchTab('log')"><span class="nav-icon">📡</span><span>Agent Log</span></div>
+    <div class="nav-sec">Platforms</div>
+    <div class="nav-item"><span class="nav-icon">🛒</span><span>eBay</span></div>
+    <div class="nav-item"><span class="nav-icon">🃏</span><span>TCGPlayer</span></div>
+    <div class="nav-item"><span class="nav-icon">📊</span><span>PriceCharting</span></div>
+  </nav>
+  <div class="sb-bottom">
+    <div class="agent-card">
+      <div class="ac-row"><span class="ac-label">Agent</span><span class="spill live" id="agentPill"><div class="sdot"></div>Live</span></div>
+      <div class="ac-next">Next: <b id="nextTxt">--:--</b></div>
     </div>
   </div>
-  <div class="header-right">
-    <div class="badge badge-gray" id="lastScanBadge">LAST SCAN: —</div>
-    <div class="badge badge-gray" id="agentBadge"><div class="pulse"></div>CONNECTING...</div>
+</aside>
+
+<div class="main">
+  <div class="topbar">
+    <div class="tb-left">
+      <div><div class="page-title" id="pageTitle">Singles Arbitrage</div><div class="breadcrumb">Minty Cards · Live Hunt</div></div>
+    </div>
+    <div class="tb-right">
+      <input class="url-inp" id="agentUrl" value="https://minty-cards-agent.onrender.com">
+      <button class="tbtn tbtn-ghost" onclick="connect()">🔌 Connect</button>
+      <button class="tbtn tbtn-primary" id="huntBtn" onclick="triggerHunt()">⚡ Hunt Now</button>
+    </div>
   </div>
-</header>
 
-<!-- AGENT URL BAR -->
-<div class="url-bar">
-  <input class="url-input" id="agentUrl" value="https://minty-cards-agent.onrender.com" placeholder="Your Render agent URL...">
-  <button class="btn btn-mint" onclick="connect()">🔌 CONNECT</button>
-  <button class="btn btn-ghost" onclick="triggerHunt()">⚡ HUNT NOW</button>
-</div>
+  <div class="content">
+    <div class="conn-err hidden" id="connErr">⚠️ Cannot reach agent — check your Render URL and make sure the service is running.</div>
 
-<!-- CONNECTION ERROR -->
-<div class="conn-error" id="connError">
-  ⚠️ Cannot reach agent. Make sure your Render URL is correct and the service is running.
-</div>
+    <div class="stats">
+      <div class="scard"><div class="sc-top"><div><div class="sc-n" id="sScanned">—</div><div class="sc-l">Total Scanned</div></div><div class="sc-icon ico-g">🔍</div></div></div>
+      <div class="scard"><div class="sc-top"><div><div class="sc-n" id="sDeals">—</div><div class="sc-l">Deals Found</div></div><div class="sc-icon ico-p">🎯</div></div></div>
+      <div class="scard"><div class="sc-top"><div><div class="sc-n" id="sSingles">—</div><div class="sc-l">Singles Active</div></div><div class="sc-icon ico-b">⚡</div></div></div>
+      <div class="scard"><div class="sc-top"><div><div class="sc-n" id="sSealed">—</div><div class="sc-l">Sealed Active</div></div><div class="sc-icon ico-o">📦</div></div></div>
+      <div class="scard"><div class="sc-top"><div><div class="sc-n" id="sAlerts">—</div><div class="sc-l">Alerts Sent</div></div><div class="sc-icon ico-r">📱</div></div></div>
+    </div>
 
-<!-- LAST SCAN BAR -->
-<div class="last-scan-bar">
-  <div class="ls-left">Agent: <b id="agentUrlDisplay">https://minty-cards-agent.onrender.com</b> · Scanning: <b>eBay · TCGPlayer · PriceCharting</b> · Threshold: <b>Singles 20% · Sealed 30%</b></div>
-  <div class="ls-right">
-    <span style="font-size:0.58rem;color:var(--muted)">Auto-refresh: <b style="color:var(--mint)" id="refreshCountdown">30s</b></span>
-  </div>
-</div>
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('singles')">⚡ Singles <span class="tcnt" id="tc1">0</span></div>
+      <div class="tab" onclick="switchTab('sealed')">📦 Sealed <span class="tcnt" id="tc2">0</span></div>
+      <div class="tab" onclick="switchTab('log')">📡 Agent Log</div>
+    </div>
 
-<!-- STATS -->
-<div class="stats">
-  <div class="stat"><div class="stat-n" id="sScanned">—</div><div class="stat-l">Total Scanned</div></div>
-  <div class="stat"><div class="stat-n" id="sDeals">—</div><div class="stat-l">Deals Found</div></div>
-  <div class="stat"><div class="stat-n" id="sSingles">—</div><div class="stat-l">Singles Active</div></div>
-  <div class="stat"><div class="stat-n" id="sSealed">—</div><div class="stat-l">Sealed Active</div></div>
-  <div class="stat"><div class="stat-n" id="sAlerts">—</div><div class="stat-l">Alerts Sent</div></div>
-</div>
-
-<!-- TABS -->
-<div class="tabs">
-  <div class="tab active" onclick="switchTab('singles')">⚡ Singles Deals</div>
-  <div class="tab" onclick="switchTab('sealed')">📦 Sealed Deals</div>
-  <div class="tab" onclick="switchTab('log')">📡 Agent Log</div>
-</div>
-
-<!-- SINGLES TAB -->
-<div id="tab-singles">
-  <div class="main-grid">
-    <div class="panel">
-      <div class="panel-head">
-        <div class="panel-title">Singles Arbitrage Deals</div>
-        <div class="panel-meta" id="singlesCount">Loading...</div>
-      </div>
-      <div class="deals-body" id="singlesDeals">
-        <div class="empty">
-          <div class="empty-icon">🃏</div>
-          <div class="empty-text">WAITING FOR FIRST SCAN<br><br>Agent scans every 30 min.<br>Hit HUNT NOW to scan immediately.</div>
+    <div id="tab-singles">
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">⚡ Singles Arbitrage Deals</div>
+            <div class="panel-meta" id="singlesLbl">20% below market · sorted by best profit</div>
+          </div>
+          <div class="deals-list" id="singlesDeals">
+            <div class="empty-state"><div class="empty-icon">🃏</div><div class="empty-title">No singles deals yet</div><div class="empty-sub">Agent scans eBay, TCGPlayer & PriceCharting every 30 min.<br>Hit <b>Hunt Now</b> to trigger a scan immediately.</div></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><div class="panel-title">📡 Live Feed</div><div class="panel-meta" id="logLbl">0 events</div></div>
+          <div class="log-scroll" id="logScroll">
+            <div class="empty-state" style="padding:32px 16px"><div class="empty-icon">📡</div><div class="empty-title">Connecting...</div></div>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- LIVE LOG SIDEBAR -->
-    <div class="panel">
-      <div class="panel-head">
-        <div class="panel-title">📡 Live Feed</div>
-        <div class="panel-meta" id="logCount">0 events</div>
+    <div id="tab-sealed" style="display:none">
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">📦 Sealed Product Deals</div><div class="panel-meta">30% below market · $1 bait filtered · resell sealed</div></div>
+        <div class="sealed-grid" id="sealedDeals">
+          <div class="empty-state"><div class="empty-icon">📦</div><div class="empty-title">No sealed deals yet</div><div class="empty-sub">Scanning eBay, TCGPlayer, Mercari, Amazon, Target, Walmart & Pokémon Center.</div></div>
+        </div>
       </div>
-      <div class="log-body" id="logBody">
-        <div class="log-empty">
-          <div class="log-empty-icon">📡</div>
-          <div>CONNECTING TO AGENT...</div>
+    </div>
+
+    <div id="tab-log" style="display:none">
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">📡 Full Agent Log</div><div class="panel-meta" id="fullLogLbl">0 events</div></div>
+        <div class="full-log" id="fullLog">
+          <div class="empty-state"><div class="empty-icon">📡</div><div class="empty-title">Connecting to agent...</div></div>
         </div>
       </div>
     </div>
   </div>
-</div>
-
-<!-- SEALED TAB -->
-<div id="tab-sealed" style="display:none">
-  <div class="panel">
-    <div class="panel-head">
-      <div class="panel-title">📦 Sealed Product Deals</div>
-      <div class="panel-meta" id="sealedCount">Loading...</div>
-    </div>
-    <div class="sealed-grid" id="sealedDeals">
-      <div class="empty">
-        <div class="empty-icon">📦</div>
-        <div class="empty-text">NO SEALED DEALS YET<br><br>30% below market threshold.<br>$1 bait listings auto-filtered.</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- LOG TAB -->
-<div id="tab-log" style="display:none">
-  <div class="panel">
-    <div class="panel-head">
-      <div class="panel-title">📡 Full Agent Log</div>
-      <div class="panel-meta" id="fullLogCount">0 events</div>
-    </div>
-    <div class="log-body" style="height:600px" id="fullLogBody">
-      <div class="log-empty"><div class="log-empty-icon">📡</div><div>CONNECTING...</div></div>
-    </div>
-  </div>
-</div>
-
-<div style="height:40px"></div>
 </div>
 
 <script>
-const DEFAULT_URL = "https://minty-cards-agent.onrender.com";
-let agentUrl = DEFAULT_URL;
-let refreshInterval = null;
-let countdownInterval = null;
-let countdownSecs = 30;
-let lastLogLength = 0;
-let lastDealsLength = 0;
+let agentUrl='https://minty-cards-agent.onrender.com';
+let refreshInterval=null,countdownInterval=null,countdownSecs=30,lastLogLen=0;
+const RICONS={SAR:'🔥',SIR:'💫',IR:'🌟',Rainbow:'🌈'};
+const RCLS={SAR:'bg-sar',SIR:'bg-sir',IR:'bg-ir',Rainbow:'bg-rainbow'};
 
-// ═══ TABS ═══
-function switchTab(t) {
-  ['singles','sealed','log'].forEach(id =>
-    document.getElementById('tab-'+id).style.display = id===t?'block':'none');
-  document.querySelectorAll('.tab').forEach((el,i) =>
-    el.classList.toggle('active',['singles','sealed','log'][i]===t));
+function switchTab(t){
+  ['singles','sealed','log'].forEach(id=>document.getElementById('tab-'+id).style.display=id===t?'block':'none');
+  document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',['singles','sealed','log'][i]===t));
+  document.querySelectorAll('.nav-item').forEach((el,i)=>el.classList.toggle('active',i<3&&['singles','sealed','log'][i]===t));
+  document.getElementById('pageTitle').textContent={singles:'Singles Arbitrage',sealed:'Sealed Deals',log:'Agent Log'}[t];
 }
 
-// ═══ CONNECT ═══
-function connect() {
-  agentUrl = document.getElementById('agentUrl').value.trim().replace(/\/$/, '');
-  document.getElementById('agentUrlDisplay').textContent = agentUrl;
-  document.getElementById('connError').style.display = 'none';
+function connect(){
+  agentUrl=document.getElementById('agentUrl').value.trim().replace(/\/$/,'');
+  document.getElementById('connErr').classList.add('hidden');
   fetchAll();
-  startAutoRefresh();
-}
-
-function startAutoRefresh() {
-  if (refreshInterval) clearInterval(refreshInterval);
-  if (countdownInterval) clearInterval(countdownInterval);
-
-  refreshInterval = setInterval(fetchAll, 30000);
-
-  countdownSecs = 30;
-  countdownInterval = setInterval(() => {
+  if(refreshInterval)clearInterval(refreshInterval);
+  if(countdownInterval)clearInterval(countdownInterval);
+  refreshInterval=setInterval(fetchAll,30000);
+  countdownSecs=30;
+  countdownInterval=setInterval(()=>{
     countdownSecs--;
-    document.getElementById('refreshCountdown').textContent = countdownSecs + 's';
-    if (countdownSecs <= 0) countdownSecs = 30;
-  }, 1000);
+    document.getElementById('nextTxt').textContent=countdownSecs+'s';
+    if(countdownSecs<=0)countdownSecs=30;
+  },1000);
 }
 
-// ═══ FETCH ALL ═══
-async function fetchAll() {
-  await Promise.all([fetchStatus(), fetchDeals(), fetchLog()]);
-}
+async function fetchAll(){await Promise.all([fetchStatus(),fetchDeals(),fetchLog()]);}
 
-async function fetchStatus() {
-  try {
-    const r = await fetch(agentUrl + '/status', {signal: AbortSignal.timeout(8000)});
-    const d = await r.json();
-    document.getElementById('connError').style.display = 'none';
-
-    // Update stats with flash animation
-    setStatVal('sScanned', d.total_scanned || 0);
-    setStatVal('sDeals', (d.singles_deals || 0) + (d.sealed_deals || 0));
-    setStatVal('sSingles', d.singles_deals || 0);
-    setStatVal('sSealed', d.sealed_deals || 0);
-    setStatVal('sAlerts', d.alerts_sent || 0);
-
-    // Status badge
-    const badge = document.getElementById('agentBadge');
-    if (d.running) {
-      badge.className = 'badge badge-green';
-      badge.innerHTML = '<div class="pulse"></div>SCANNING';
-    } else {
-      badge.className = 'badge badge-green';
-      badge.innerHTML = '<div class="pulse"></div>MONITORING';
-    }
-
-    if (d.last_scan) {
-      document.getElementById('lastScanBadge').textContent = 'LAST SCAN: ' + d.last_scan.split(' ')[1] || d.last_scan;
-    }
-  } catch(e) {
-    document.getElementById('connError').style.display = 'block';
-    document.getElementById('agentBadge').className = 'badge badge-red';
-    document.getElementById('agentBadge').innerHTML = '<div class="pulse"></div>OFFLINE';
+async function fetchStatus(){
+  try{
+    const r=await fetch(agentUrl+'/status',{signal:AbortSignal.timeout(8000)});
+    const d=await r.json();
+    document.getElementById('connErr').classList.add('hidden');
+    ['sScanned','sDeals','sSingles','sSealed','sAlerts'].forEach((id,i)=>{
+      const vals=[d.total_scanned||0,(d.singles_deals||0)+(d.sealed_deals||0),d.singles_deals||0,d.sealed_deals||0,d.alerts_sent||0];
+      document.getElementById(id).textContent=vals[i];
+    });
+    const p=document.getElementById('agentPill');
+    if(d.running){p.className='spill scanning';p.innerHTML='<div class="sdot"></div>Scanning';}
+    else{p.className='spill live';p.innerHTML='<div class="sdot"></div>Live';}
+  }catch(e){
+    document.getElementById('connErr').classList.remove('hidden');
+    document.getElementById('agentPill').className='spill offline';
+    document.getElementById('agentPill').innerHTML='<div class="sdot"></div>Offline';
   }
 }
 
-function setStatVal(id, val) {
-  const el = document.getElementById(id);
-  if (el.textContent !== String(val)) {
-    el.textContent = val;
-    el.closest('.stat').classList.add('updated');
-    setTimeout(() => el.closest('.stat').classList.remove('updated'), 600);
-  }
+async function fetchDeals(){
+  try{
+    const r=await fetch(agentUrl+'/deals',{signal:AbortSignal.timeout(8000)});
+    const d=await r.json();
+    renderSingles(d.singles||[]);
+    renderSealed(d.sealed||[]);
+  }catch(e){}
 }
 
-async function fetchDeals() {
-  try {
-    const r = await fetch(agentUrl + '/deals', {signal: AbortSignal.timeout(8000)});
-    const d = await r.json();
-
-    renderSingles(d.singles || []);
-    renderSealed(d.sealed || []);
-  } catch(e) {}
+async function fetchLog(){
+  try{
+    const r=await fetch(agentUrl+'/log',{signal:AbortSignal.timeout(8000)});
+    const logs=await r.json();
+    if(logs.length===lastLogLen)return;
+    lastLogLen=logs.length;
+    renderLog(logs.slice(-40),'logScroll');
+    renderLog(logs,'fullLog');
+    document.getElementById('logLbl').textContent=logs.length+' events';
+    document.getElementById('fullLogLbl').textContent=logs.length+' events';
+  }catch(e){}
 }
 
-async function fetchLog() {
-  try {
-    const r = await fetch(agentUrl + '/log', {signal: AbortSignal.timeout(8000)});
-    const logs = await r.json();
-
-    renderLog(logs, 'logBody', true);
-    renderLog(logs, 'fullLogBody', false);
-    document.getElementById('logCount').textContent = logs.length + ' events';
-    document.getElementById('fullLogCount').textContent = logs.length + ' events';
-  } catch(e) {}
-}
-
-// ═══ RENDER SINGLES ═══
-function renderSingles(deals) {
-  const container = document.getElementById('singlesDeals');
-  document.getElementById('singlesCount').textContent = deals.length + ' deal' + (deals.length!==1?'s':'') + ' found';
-
-  if (!deals.length) {
-    container.innerHTML = `<div class="empty"><div class="empty-icon">🔍</div><div class="empty-text">NO SINGLES DEALS YET<br><br>Agent is scanning eBay, TCGPlayer &amp; PriceCharting.<br>20% below market avg triggers an alert.</div></div>`;
-    return;
-  }
-
-  // Only re-render if count changed
-  if (deals.length === lastDealsLength) return;
-  lastDealsLength = deals.length;
-
-  container.innerHTML = '';
-  deals.sort((a,b) => (b.netProfit||0) - (a.netProfit||0));
-
-  deals.forEach((deal, i) => {
-    const pct = deal.pct || Math.round((1 - deal.buyPrice/deal.market)*100);
-    const grade = pct >= 30 ? 'HOT' : 'GOOD';
-    const tagCls = pct >= 30 ? 'tag-hot' : 'tag-good';
-    const tagTxt = pct >= 30 ? `🔥 ${pct}% BELOW` : `✓ ${pct}% BELOW`;
-    const profit = deal.netProfit || 0;
-    const profitCls = profit >= 0 ? 'profit' : 'loss';
-
-    const el = document.createElement('div');
-    el.className = `deal-card ${grade}`;
-    el.style.animationDelay = (i * 0.04) + 's';
-    el.innerHTML = `
-      <div class="dc-platform">${deal.platform || 'eBay'} · ${deal.condition || 'NM/LP'} · ${deal.time || ''}</div>
-      <div class="dc-top">
-        <div>
-          <div class="dc-name">${deal.name}</div>
-          <div class="dc-meta">${deal.set} · ${deal.rarity}</div>
-        </div>
-        <span class="dc-tag ${tagCls}">${tagTxt}</span>
+function renderSingles(deals){
+  const c=document.getElementById('singlesDeals');
+  document.getElementById('tc1').textContent=deals.length;
+  document.getElementById('singlesBadge').textContent=deals.length;
+  document.getElementById('singlesLbl').textContent=deals.length?`${deals.length} deal${deals.length!==1?'s':''} · sorted by best profit`:'20% below market · sorted by best profit';
+  if(!deals.length){c.innerHTML='<div class="empty-state"><div class="empty-icon">🃏</div><div class="empty-title">No singles deals yet</div><div class="empty-sub">Agent scans eBay, TCGPlayer & PriceCharting every 30 min.<br>Hit <b>Hunt Now</b> to trigger a scan immediately.</div></div>';return;}
+  deals.sort((a,b)=>(b.netProfit||0)-(a.netProfit||0));
+  c.innerHTML='';
+  deals.forEach((deal,i)=>{
+    const pct=deal.pct||Math.round((1-deal.buyPrice/deal.market)*100);
+    const profit=deal.netProfit||0;
+    const profCls=profit>=0?'pv-profit':'pv-loss';
+    const grade=pct>=30?'hot':pct>=20?'good':'fair';
+    const icon=RICONS[deal.rarity]||'⭐';
+    const rcls=RCLS[deal.rarity]||'bg-ir';
+    const url=deal.link||`https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(deal.name+' '+deal.set+' pokemon')}`;
+    const row=document.createElement('div');
+    row.className='deal-row';row.style.animationDelay=(i*0.04)+'s';
+    row.innerHTML=`
+      <div class="rar-icon ${rcls}">${icon}</div>
+      <div><div class="dr-name">${deal.name}</div><div class="dr-sub">${deal.set} · ${deal.rarity} · ${deal.condition||'NM/LP'} · ${deal.platform||'eBay'}</div></div>
+      <div style="display:flex;gap:16px;align-items:center">
+        <div class="price-stack"><div class="ps-label">Buy</div><div class="ps-val pv-buy">$${(deal.buyPrice||0).toFixed(2)}</div></div>
+        <div class="price-stack"><div class="ps-label">Market</div><div class="ps-val pv-market">$${(deal.market||0).toFixed(2)}</div></div>
+        <div class="price-stack"><div class="ps-label">Profit</div><div class="ps-val ${profCls}">$${profit.toFixed(2)}</div></div>
       </div>
-      <div class="dc-prices">
-        <div class="dc-price-box">
-          <div class="dc-price-label">BUY PRICE</div>
-          <div class="dc-price-val buy">$${(deal.buyPrice||0).toFixed(2)}</div>
-        </div>
-        <div class="dc-price-box">
-          <div class="dc-price-label">ARB PROFIT</div>
-          <div class="dc-price-val ${profitCls}">$${profit.toFixed(2)}</div>
-        </div>
-        <div class="dc-price-box">
-          <div class="dc-price-label">MARKET AVG</div>
-          <div class="dc-price-val" style="color:var(--text);font-size:1.1rem">$${(deal.market||0).toFixed(2)}</div>
-        </div>
-        <div class="dc-price-box">
-          <div class="dc-price-label">WHATNOT SELL</div>
-          <div class="dc-price-val" style="color:var(--blue);font-size:1.1rem">~$${(deal.whatnotSell||0).toFixed(2)}</div>
-        </div>
-      </div>
-      <a class="dc-buy" href="${deal.link || '#'}" target="_blank">⚡ BUY ON ${(deal.platform||'EBAY').toUpperCase()}</a>
-    `;
-    container.appendChild(el);
+      <div class="dr-actions">
+        <span class="pct-pill pp-${grade}">${pct>=30?'🔥 ':'✓ '}${pct}% below</span>
+        <a class="buy-pill" href="${url}" target="_blank">⚡ Buy</a>
+      </div>`;
+    c.appendChild(row);
   });
 }
 
-// ═══ RENDER SEALED ═══
-function renderSealed(deals) {
-  const container = document.getElementById('sealedDeals');
-  document.getElementById('sealedCount').textContent = deals.length + ' deal' + (deals.length!==1?'s':'');
-
-  if (!deals.length) {
-    container.innerHTML = `<div class="empty"><div class="empty-icon">📦</div><div class="empty-text">NO SEALED DEALS YET<br><br>30% below market threshold.<br>Scanning all 7 platforms.</div></div>`;
-    return;
-  }
-
-  if (deals.length === lastDealsLength) return;
-
-  container.innerHTML = '';
-  deals.sort((a,b) => (b.netProfit||0) - (a.netProfit||0));
-
-  deals.forEach((deal, i) => {
-    const pct = deal.pct || 0;
-    const profit = deal.netProfit || 0;
-    const profitCls = profit >= 0 ? 'profit' : 'loss';
-
-    const el = document.createElement('div');
-    el.className = 'deal-card GOOD';
-    el.style.animationDelay = (i * 0.04) + 's';
-    el.innerHTML = `
-      <div class="dc-platform">${deal.platform || 'eBay'} · ${deal.type || 'Sealed'} · ${deal.time || ''}</div>
-      <div class="dc-top">
-        <div>
-          <div class="dc-name">${deal.name}</div>
-          <div class="dc-meta">${deal.set}</div>
-        </div>
-        <span class="dc-tag tag-sealed">${pct}% BELOW</span>
-      </div>
-      <div class="dc-prices">
-        <div class="dc-price-box">
-          <div class="dc-price-label">BUY PRICE</div>
-          <div class="dc-price-val buy">$${(deal.buyPrice||0).toFixed(2)}</div>
-        </div>
-        <div class="dc-price-box">
-          <div class="dc-price-label">RESELL PROFIT</div>
-          <div class="dc-price-val ${profitCls}">$${profit.toFixed(2)}</div>
-        </div>
-        <div class="dc-price-box">
-          <div class="dc-price-label">MARKET AVG</div>
-          <div class="dc-price-val" style="color:var(--text);font-size:1.1rem">$${(deal.market||0).toFixed(2)}</div>
-        </div>
-        <div class="dc-price-box">
-          <div class="dc-price-label">RESELL EST.</div>
-          <div class="dc-price-val" style="color:var(--blue);font-size:1.1rem">~$${(deal.market||0).toFixed(2)}</div>
-        </div>
-      </div>
-      <a class="dc-buy" href="${deal.link || '#'}" target="_blank">⚡ BUY ON ${(deal.platform||'EBAY').toUpperCase()}</a>
-    `;
-    container.appendChild(el);
+function renderSealed(deals){
+  const c=document.getElementById('sealedDeals');
+  document.getElementById('tc2').textContent=deals.length;
+  document.getElementById('sealedBadge').textContent=deals.length;
+  if(!deals.length){c.innerHTML='<div class="empty-state"><div class="empty-icon">📦</div><div class="empty-title">No sealed deals yet</div><div class="empty-sub">Scanning 7 platforms. 30% below market triggers an alert.</div></div>';return;}
+  deals.sort((a,b)=>(b.netProfit||0)-(a.netProfit||0));
+  c.innerHTML='';
+  deals.forEach((deal,i)=>{
+    const url=deal.link||`https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(deal.name+' pokemon sealed')}`;
+    const el=document.createElement('div');
+    el.className='s-card';el.style.animationDelay=(i*0.05)+'s';
+    el.innerHTML=`
+      <div class="sct-badge">📦 ${deal.type||'Sealed'}</div>
+      <div class="sc-name">${deal.name}</div>
+      <div class="sc-set">${deal.set} · ${deal.platform||'eBay'}</div>
+      <div class="sc-pr"><div class="sc-price">$${(deal.buyPrice||0).toFixed(2)}</div><div class="sc-mkt">$${(deal.market||0).toFixed(2)}</div></div>
+      <div class="sc-profit">+$${(deal.netProfit||0).toFixed(2)} est. resell profit · ${deal.pct||0}% below</div>
+      <a class="sc-buy" href="${url}" target="_blank">⚡ Buy on ${deal.platform||'eBay'}</a>`;
+    c.appendChild(el);
   });
 }
 
-// ═══ RENDER LOG ═══
-function renderLog(logs, containerId, sidebarMode) {
-  const container = document.getElementById(containerId);
-  const displayLogs = sidebarMode ? logs.slice(-40) : logs;
-
-  // Only append new lines
-  if (logs.length === lastLogLength && container.children.length > 1) return;
-  lastLogLength = logs.length;
-
-  if (!logs.length) {
-    container.innerHTML = `<div class="log-empty"><div class="log-empty-icon">📡</div><div>AGENT CONNECTED — WAITING FOR SCAN</div></div>`;
-    return;
-  }
-
-  container.innerHTML = '';
-  displayLogs.forEach(entry => {
-    const line = document.createElement('div');
-    line.className = 'log-line';
-    line.innerHTML = `<span class="lt">${entry.time||''}</span><span class="lk ${entry.level||'SYS'}">${entry.level||'SYS'}</span><span class="lm">${entry.msg||''}</span>`;
-    container.appendChild(line);
+function renderLog(logs,cid){
+  const c=document.getElementById(cid);
+  if(!logs.length){c.innerHTML='<div class="empty-state" style="padding:28px"><div class="empty-icon">📡</div><div class="empty-title">Agent connected — waiting for scan</div></div>';return;}
+  c.innerHTML='';
+  logs.forEach(e=>{
+    const el=document.createElement('div');el.className='log-entry';
+    el.innerHTML=`<span class="le-t">${e.time||''}</span><span class="le-b lb-${e.level||'SYS'}">${e.level||'SYS'}</span><span class="le-m${e.level==='DEAL'?' deal':''}">${e.msg||''}</span>`;
+    c.appendChild(el);
   });
-  container.scrollTop = container.scrollHeight;
+  c.scrollTop=c.scrollHeight;
 }
 
-// ═══ MANUAL HUNT ═══
-async function triggerHunt() {
-  try {
-    const r = await fetch(agentUrl + '/hunt', {signal: AbortSignal.timeout(8000)});
-    const d = await r.json();
-    alert('✅ Hunt triggered! Watch the Agent Log tab for live progress. Telegram alerts will fire as deals are found.');
-    setTimeout(fetchAll, 3000);
-  } catch(e) {
-    alert('⚠️ Could not reach agent. Check your URL and make sure Render is running.');
+async function triggerHunt(){
+  const btn=document.getElementById('huntBtn');
+  btn.disabled=true;btn.textContent='⟳ Scanning...';
+  try{
+    await fetch(agentUrl+'/hunt',{signal:AbortSignal.timeout(8000)});
+    setTimeout(()=>{btn.disabled=false;btn.textContent='⚡ Hunt Now';fetchAll();},3000);
+  }catch(e){
+    alert('⚠️ Could not reach agent. Check your Render URL.');
+    btn.disabled=false;btn.textContent='⚡ Hunt Now';
   }
 }
 
-// ═══ INIT ═══
 connect();
 </script>
 </body>
