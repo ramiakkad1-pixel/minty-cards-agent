@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: minty-cards-agent
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120 --workers 1
+    envVars:
+      - key: TELEGRAM_TOKEN
+        value: 8639012891:AAEsPGc6eISuFWVXpi7w3ORba75ha3R4woI
+      - key: TELEGRAM_CHAT_ID
+        value: "7922849859"
+      - key: PYTHON_VERSION
+        value: 3.11.0
