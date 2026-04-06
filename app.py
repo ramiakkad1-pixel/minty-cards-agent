@@ -5,10 +5,11 @@ import threading
 import requests
 from bs4 import BeautifulSoup
 from flask import Flask, jsonify
+from flask_cors import CORS
 from datetime import datetime
 
 app = Flask(__name__)
-
+CORS(app)
 # ═══ CONFIG ═══
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8639012891:AAEsPGc6eISuFWVXpi7w3ORba75ha3R4woI")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "7922849859")
