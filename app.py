@@ -480,13 +480,11 @@ def test_telegram():
     return jsonify({"status": "sent"})
 
 # ═══ START ═══
+log("SYS", "Minty Cards Arbitrage Agent starting up...")
+log("SYS", f"Telegram: {TELEGRAM_CHAT_ID} | Refresh: {REFRESH_MINUTES}min | Singles: {SINGLES_THRESHOLD*100}% | Sealed: {SEALED_THRESHOLD*100}%")
+t = threading.Thread(target=schedule_loop, daemon=True)
+t.start()
+
 if __name__ == "__main__":
-    log("SYS", "Minty Cards Arbitrage Agent starting up...")
-    log("SYS", f"Telegram: {TELEGRAM_CHAT_ID} | Refresh: {REFRESH_MINUTES}min | Singles: {SINGLES_THRESHOLD*100}% | Sealed: {SEALED_THRESHOLD*100}%")
-
-    # Start hunt loop in background
-    t = threading.Thread(target=schedule_loop, daemon=True)
-    t.start()
-
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
