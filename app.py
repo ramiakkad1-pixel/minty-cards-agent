@@ -165,9 +165,10 @@ def get_market_avg(card_name, set_name):
         f_tcg = ex.submit(get_tcgplayer_price, card_name, set_name)
         f_pc  = ex.submit(get_pricecharting_price, card_name, set_name)
         f_eb  = ex.submit(get_ebay_sold_price, card_name, set_name)
-        tcg = f_tcg.result()
-        pc  = f_pc.result()
-        eb  = f_eb.result()
+        tcg = f_tcg.result(timeout=8)
+        pc  = f_pc.result(timeout=8)
+        eb  = f_eb.result(timeout=8)
+
 
     prices = []
     if tcg and tcg > 0.50: prices.append(tcg); log("FIND", f'TCGPlayer: ${tcg:.2f}')
