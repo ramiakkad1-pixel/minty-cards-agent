@@ -8,31 +8,44 @@ from flask import Flask, jsonify
 from datetime import datetime
 
 # ═══════════════════════════════════════════════════════════════
-# MINTY CARDS ARBITRAGE AGENT v3.2
+# MINTY CARDS ARBITRAGE AGENT v3.3
 # ═══════════════════════════════════════════════════════════════
-# FIXES in v3.2:
-# - Alert history saved to disk → survives restarts (no more spam)
-# - eBay Browse API added as second deal source
-# - Min $10 filter → no junk alerts on $3 cards
-# - 63 cards across 12 sets
+# v3.3 FIXES:
+# 1. eBay searches include rarity (SAR/SIR/HR etc) — no more wrong cards
+# 2. Price sanity: eBay price must be >50% of market (catches wrong listings)
+# 3. Minimum $5 profit to alert (no $0.77 junk)
+# 4. Dedup by card_id (no duplicate alerts for same physical card)
+# 5. Silent first scan — populates prices without spamming Telegram
 # ═══════════════════════════════════════════════════════════════
 
 app = Flask(__name__)
 
-TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_TOKEN", "")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
-POKEMONTCG_KEY   = os.environ.get("POKEMONTCG_KEY", "")
-EBAY_CLIENT_ID   = os.environ.get("EBAY_CLIENT_ID", "")
+TELEGRAM_TOKEN     = os.environ.get("TELEGRAM_TOKEN", "")
+TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "")
+POKEMONTCG_KEY     = os.environ.get("POKEMONTCG_KEY", "")
+EBAY_CLIENT_ID     = os.environ.get("EBAY_CLIENT_ID", "")
 EBAY_CLIENT_SECRET = os.environ.get("EBAY_CLIENT_SECRET", "")
-THRESHOLD        = float(os.environ.get("THRESHOLD", "0.20"))
-REFRESH_MINUTES  = int(os.environ.get("REFRESH_MINUTES", "10"))
-MIN_PRICE        = 10.00
-WHATNOT_FEE      = 0.15
-REQUEST_TIMEOUT  = 15
-BATCH_SIZE       = 10
+THRESHOLD          = float(os.environ.get("THRESHOLD", "0.20"))
+REFRESH_MINUTES    = int(os.environ.get("REFRESH_MINUTES", "10"))
+MIN_MARKET_PRICE   = 10.00   # ignore cards under $10 market
+MIN_PROFIT         = 5.00    # don't alert for less than $5 profit
+EBAY_SANITY_FLOOR  = 0.50    # eBay price must be >50% of market (otherwise wrong card)
+WHATNOT_FEE        = 0.15
+REQUEST_TIMEOUT    = 15
+BATCH_SIZE         = 10
 PRICE_DROP_TO_REALERT = 2.00
 
-# ── Alert history persisted to /tmp ──
+# ── Rarity keywords for eBay search ──
+RARITY_EBAY_KEYWORDS = {
+    "SAR": "special art rare",
+    "SIR": "special illustration rare",
+    "HR":  "hyper rare gold",
+    "IR":  "illustration rare",
+    "UR":  "ultra rare full art",
+    "Shiny": "shiny rare",
+}
+
+# ── Alert history (persisted to disk) ──
 ALERT_FILE = "/tmp/minty_alerted.json"
 
 def load_alerted():
@@ -51,7 +64,13 @@ def save_alerted(data):
 
 alerted_cards = load_alerted()
 
-# ── eBay OAuth token cache ──
+# ── Track if first full rotation is done (silent scan) ──
+first_rotation_done = False
+
+# ── Dedup: track card_ids already seen this rotation ──
+seen_card_ids = set()
+
+# ── eBay OAuth ──
 ebay_token_cache = {"token": None, "expires": 0}
 
 def get_ebay_token():
@@ -62,58 +81,77 @@ def get_ebay_token():
         return ebay_token_cache["token"]
     try:
         creds = base64.b64encode(f"{EBAY_CLIENT_ID}:{EBAY_CLIENT_SECRET}".encode()).decode()
-        resp = requests.post(
-            "https://api.ebay.com/identity/v1/oauth2/token",
+        resp = requests.post("https://api.ebay.com/identity/v1/oauth2/token",
             headers={"Content-Type": "application/x-www-form-urlencoded", "Authorization": f"Basic {creds}"},
             data={"grant_type": "client_credentials", "scope": "https://api.ebay.com/oauth/api_scope"},
-            timeout=10
-        )
+            timeout=10)
         if resp.status_code == 200:
             data = resp.json()
             ebay_token_cache["token"] = data["access_token"]
             ebay_token_cache["expires"] = now + data.get("expires_in", 7200) - 300
             log("EBAY", "OAuth token acquired")
             return data["access_token"]
-        else:
-            log("EBAY", f"OAuth failed: {resp.status_code} — {resp.text[:100]}")
-            return None
+        log("EBAY", f"OAuth failed: {resp.status_code}")
+        return None
     except Exception as e:
         log("EBAY", f"OAuth error: {str(e)[:80]}")
         return None
 
-def search_ebay(card_name, set_name):
+def search_ebay(card_name, set_name, rarity, market_price):
+    """Search eBay with rarity-specific keywords and sanity checks."""
     token = get_ebay_token()
     if not token:
         return None
     try:
-        query = f"{card_name} {set_name} pokemon tcg"
-        resp = requests.get(
-            "https://api.ebay.com/buy/browse/v1/item_summary/search",
+        # Build rarity-aware search query
+        rarity_kw = RARITY_EBAY_KEYWORDS.get(rarity, rarity)
+        query = f"{card_name} {rarity_kw} {set_name} pokemon"
+
+        resp = requests.get("https://api.ebay.com/buy/browse/v1/item_summary/search",
             headers={"Authorization": f"Bearer {token}", "X-EBAY-C-MARKETPLACE-ID": "EBAY_US"},
-            params={"q": query, "limit": 5, "filter": "buyingOptions:{FIXED_PRICE},conditions:{NEW}",
+            params={"q": query, "limit": 10, "filter": "buyingOptions:{FIXED_PRICE},conditions:{NEW}",
                     "sort": "price"},
-            timeout=REQUEST_TIMEOUT
-        )
-        if resp.status_code == 200:
-            items = resp.json().get("itemSummaries", [])
-            if items:
-                best = items[0]
-                price = float(best.get("price", {}).get("value", 0))
-                link = best.get("itemWebUrl", "")
-                title = best.get("title", "")
-                return {"price": round(price, 2), "url": link, "title": title}
-        elif resp.status_code == 429:
-            log("EBAY", "Rate limited")
-            time.sleep(5)
-        else:
-            log("EBAY", f"Search {resp.status_code}: {resp.text[:80]}")
+            timeout=REQUEST_TIMEOUT)
+
+        if resp.status_code != 200:
+            if resp.status_code == 429:
+                log("EBAY", "Rate limited — waiting 10s")
+                time.sleep(10)
+            else:
+                log("EBAY", f"Search error {resp.status_code}")
+            return None
+
+        items = resp.json().get("itemSummaries", [])
+        if not items:
+            return None
+
+        # Find the cheapest item that passes sanity checks
+        for item in items:
+            price = float(item.get("price", {}).get("value", 0))
+            if price <= 0:
+                continue
+
+            # SANITY CHECK 1: Price must be >50% of market
+            # If eBay shows $14 for a $1400 card, it's the wrong card
+            if price < market_price * EBAY_SANITY_FLOOR:
+                continue
+
+            # SANITY CHECK 2: Price must be >= $10
+            if price < MIN_MARKET_PRICE:
+                continue
+
+            link = item.get("itemWebUrl", "")
+            title = item.get("title", "")
+            return {"price": round(price, 2), "url": link, "title": title}
+
         return None
     except Exception as e:
-        log("EBAY", f"Search error: {str(e)[:80]}")
+        log("EBAY", f"Error: {str(e)[:80]}")
         return None
 
+
 # ══════════════════════════════════════════════════════════════
-# 63 TARGET CARDS across 12 sets
+# 62 TARGET CARDS across 12 sets
 # ══════════════════════════════════════════════════════════════
 TARGETS = [
     # PRISMATIC EVOLUTIONS
@@ -179,7 +217,6 @@ TARGETS = [
     {"name": "Ogerpon ex",  "set": "Twilight Masquerade","rarity": "SAR","q": 'name:"Ogerpon ex" set.name:"Twilight Masquerade"'},
     # OBSIDIAN FLAMES
     {"name": "Charizard ex","set": "Obsidian Flames","rarity": "SIR","q": 'name:"Charizard ex" set.name:"Obsidian Flames" rarity:"Special Illustration Rare"'},
-    {"name": "Charizard ex","set": "Obsidian Flames","rarity": "SAR","q": 'name:"Charizard ex" set.name:"Obsidian Flames"'},
     # PARADOX RIFT
     {"name": "Roaring Moon ex","set": "Paradox Rift","rarity": "SIR","q": 'name:"Roaring Moon ex" set.name:"Paradox Rift"'},
     {"name": "Iron Valiant ex","set": "Paradox Rift","rarity": "SAR","q": 'name:"Iron Valiant ex" set.name:"Paradox Rift"'},
@@ -195,7 +232,8 @@ TARGETS = [
 # ── State ──
 state = {"running": False, "last_scan": "never", "scan_count": 0, "total_cards_checked": 0,
          "batch_index": 0, "deals_found": [], "all_prices": [], "alerts_sent": 0,
-         "alerts_skipped": 0, "ebay_deals": 0, "errors": [], "log": []}
+         "alerts_skipped": 0, "ebay_deals": 0, "ebay_skipped_wrong_card": 0,
+         "errors": [], "log": []}
 
 def log(tag, msg):
     ts = datetime.now().strftime("%H:%M:%S")
@@ -209,23 +247,22 @@ def send_telegram(text):
         return False
     try:
         resp = requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-            json={"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True}, timeout=10)
+            json={"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML",
+                  "disable_web_page_preview": True}, timeout=10)
         return resp.status_code == 200
     except:
         return False
 
-def should_alert(card, low_price):
-    key = f"{card['name']}|{card['set']}|{card.get('rarity','')}"
+def should_alert(key, price):
     last = alerted_cards.get(key)
     if last is None:
         return True
-    if low_price <= last - PRICE_DROP_TO_REALERT:
+    if price <= last - PRICE_DROP_TO_REALERT:
         return True
     return False
 
-def mark_alerted(card, low_price):
-    key = f"{card['name']}|{card['set']}|{card.get('rarity','')}"
-    alerted_cards[key] = low_price
+def mark_alerted(key, price):
+    alerted_cards[key] = price
     save_alerted(alerted_cards)
 
 def get_tcg_price(card):
@@ -236,7 +273,7 @@ def get_tcg_price(card):
         resp = requests.get("https://api.pokemontcg.io/v2/cards", headers=headers,
                           params={"q": card["q"], "pageSize": 5}, timeout=REQUEST_TIMEOUT)
         if resp.status_code == 429:
-            log("API", "Rate limited — waiting 60s")
+            log("API", "Rate limited — 60s")
             time.sleep(60)
             return None
         if resp.status_code != 200:
@@ -264,7 +301,123 @@ def get_tcg_price(card):
     except:
         return None
 
+def process_card(card, silent_mode):
+    """Process a single card. If silent_mode=True, log prices but don't send alerts."""
+    global first_rotation_done
+
+    log("SCAN", f"{card['name']} [{card['rarity']}] — {card['set']}")
+
+    pd = get_tcg_price(card)
+    if not pd:
+        time.sleep(1)
+        return
+
+    state["total_cards_checked"] += 1
+    market = pd["market_price"]
+    low = pd["low_price"]
+    card_id = pd.get("card_id", "")
+
+    log("PRICE", f"  Mkt: ${market} | Low: ${low} | Mid: ${pd['mid_price']}")
+
+    # Skip cards under minimum market price
+    if market < MIN_MARKET_PRICE:
+        log("SCAN", f"  Skip (${market} < ${MIN_MARKET_PRICE} min)")
+        time.sleep(2)
+        return
+
+    # Dedup: if we already processed this exact card_id this rotation, skip
+    if card_id and card_id in seen_card_ids:
+        log("SCAN", f"  Skip (card_id {card_id} already scanned)")
+        time.sleep(2)
+        return
+    if card_id:
+        seen_card_ids.add(card_id)
+
+    # Store price
+    pk = f"{card['name']}|{card['set']}|{card.get('rarity','')}"
+    existing = {f"{p['card']}|{p['set']}|{p['rarity']}": p for p in state["all_prices"]}
+    existing[pk] = {"card": card["name"], "set": card["set"], "rarity": card.get("rarity",""),
+                  "market": market, "low": low, "tcgplayer_url": pd.get("tcgplayer_url","")}
+    state["all_prices"] = list(existing.values())
+
+    # ── TCGPlayer deal check ──
+    if market > 0 and low > 0 and (market - low) / market >= THRESHOLD:
+        profit = round(market - market * WHATNOT_FEE - low, 2)
+        disc = round((market - low) / market * 100, 1)
+
+        if profit >= MIN_PROFIT:
+            tcg_key = f"TCG|{pk}"
+            ed = {f"{d['card']}|{d['set']}|{d['rarity']}|{d.get('source','')}": d for d in state["deals_found"]}
+            ed[f"{pk}|TCGPlayer"] = {"card": card["name"], "set": card["set"], "rarity": card.get("rarity",""),
+                 "market_price": market, "low_price": low, "discount_pct": disc,
+                 "net_profit": profit, "source": "TCGPlayer",
+                 "url": pd.get("tcgplayer_url",""), "found_at": datetime.now().strftime("%H:%M:%S")}
+            state["deals_found"] = list(ed.values())
+
+            if not silent_mode and should_alert(tcg_key, low):
+                log("DEAL", f"  🔥 TCG: ${low} ({disc}% off) profit ${profit} — ALERTING")
+                txt = (f"🔥 <b>DEAL — TCGPlayer</b>\n\n<b>{card['name']}</b> [{card.get('rarity','')}]\n"
+                      f"📦 {card['set']}\n\n💰 Low: <b>${low}</b>\n📈 Market: ${market}\n"
+                      f"🏷️ {disc}% below\n💵 Profit: ~<b>${profit}</b>\n\n")
+                if pd.get("tcgplayer_url"):
+                    txt += f'<a href="{pd["tcgplayer_url"]}">⚡ BUY ON TCGPLAYER</a>'
+                if send_telegram(txt):
+                    state["alerts_sent"] += 1
+                mark_alerted(tcg_key, low)
+            elif silent_mode:
+                # During silent scan, still mark as alerted to prevent burst later
+                mark_alerted(tcg_key, low)
+                log("SCAN", f"  🔇 Deal found (silent mode — marking without alert)")
+            else:
+                state["alerts_skipped"] += 1
+                log("SCAN", f"  🔔 Already alerted — skip")
+        else:
+            log("SCAN", f"  Skip TCG (profit ${profit} < ${MIN_PROFIT} min)")
+    else:
+        log("SCAN", f"  No TCG deal")
+
+    # ── eBay deal check ──
+    if EBAY_CLIENT_ID:
+        ebay = search_ebay(card["name"], card["set"], card.get("rarity", ""), market)
+        if ebay and ebay["price"] > 0 and market > 0:
+            ebay_disc = (market - ebay["price"]) / market
+            ebay_profit = round(market - market * WHATNOT_FEE - ebay["price"], 2)
+
+            if ebay_disc >= THRESHOLD and ebay_profit >= MIN_PROFIT:
+                disc_pct = round(ebay_disc * 100, 1)
+                ebay_key = f"EBAY|{pk}"
+
+                ed = {f"{d['card']}|{d['set']}|{d['rarity']}|{d.get('source','')}": d for d in state["deals_found"]}
+                ed[f"{pk}|eBay"] = {"card": card["name"], "set": card["set"], "rarity": card.get("rarity",""),
+                     "market_price": market, "low_price": ebay["price"], "discount_pct": disc_pct,
+                     "net_profit": ebay_profit, "source": "eBay",
+                     "url": ebay["url"], "found_at": datetime.now().strftime("%H:%M:%S")}
+                state["deals_found"] = list(ed.values())
+
+                if not silent_mode and should_alert(ebay_key, ebay["price"]):
+                    log("DEAL", f"  🛒 eBay: ${ebay['price']} ({disc_pct}% off) profit ${ebay_profit}")
+                    txt = (f"🛒 <b>DEAL — eBay</b>\n\n<b>{card['name']}</b> [{card.get('rarity','')}]\n"
+                          f"📦 {card['set']}\n\n💰 eBay BIN: <b>${ebay['price']}</b>\n"
+                          f"📈 Market: ${market}\n🏷️ {disc_pct}% below\n"
+                          f"💵 Profit: ~<b>${ebay_profit}</b>\n\n"
+                          f'<a href="{ebay["url"]}">⚡ BUY ON EBAY</a>')
+                    if send_telegram(txt):
+                        state["alerts_sent"] += 1
+                        state["ebay_deals"] += 1
+                    mark_alerted(ebay_key, ebay["price"])
+                elif silent_mode:
+                    mark_alerted(ebay_key, ebay["price"])
+                else:
+                    state["alerts_skipped"] += 1
+            else:
+                log("SCAN", f"  eBay skip (profit ${ebay_profit} < ${MIN_PROFIT})")
+        time.sleep(1)
+
+    time.sleep(2)
+
 def run_hunt():
+    global first_rotation_done, seen_card_ids
+
     if state["running"]:
         return
     state["running"] = True
@@ -273,93 +426,30 @@ def run_hunt():
     start = state["batch_index"]
     end = min(start + BATCH_SIZE, len(TARGETS))
     batch = TARGETS[start:end]
-    log("SYS", f"═══ CYCLE #{state['scan_count']} — cards {start+1}-{end}/{len(TARGETS)} ═══")
+
+    silent = not first_rotation_done
+    mode_label = "SILENT" if silent else "LIVE"
+    log("SYS", f"═══ CYCLE #{state['scan_count']} [{mode_label}] — cards {start+1}-{end}/{len(TARGETS)} ═══")
 
     for i, card in enumerate(batch):
         try:
-            log("SCAN", f"[{start+i+1}/{len(TARGETS)}] {card['name']} [{card['rarity']}] — {card['set']}")
-            pd = get_tcg_price(card)
-            if not pd:
-                time.sleep(1)
-                continue
-            state["total_cards_checked"] += 1
-            market = pd["market_price"]
-            low = pd["low_price"]
-            log("PRICE", f"  → Mkt: ${market} | Low: ${low} | Mid: ${pd['mid_price']}")
-
-            # Skip cards under minimum price
-            if market < MIN_PRICE:
-                log("SCAN", f"  → Skip (market ${market} < ${MIN_PRICE} min)")
-                time.sleep(2)
-                continue
-
-            # Store price
-            pk = f"{card['name']}|{card['set']}|{card.get('rarity','')}"
-            existing = {f"{p['card']}|{p['set']}|{p['rarity']}": p for p in state["all_prices"]}
-            existing[pk] = {"card": card["name"], "set": card["set"], "rarity": card.get("rarity",""),
-                          "market": market, "low": low, "tcgplayer_url": pd.get("tcgplayer_url","")}
-            state["all_prices"] = list(existing.values())
-
-            # Check TCGPlayer deal
-            if market > 0 and low > 0 and (market - low) / market >= THRESHOLD:
-                disc = round((market - low) / market * 100, 1)
-                profit = round(market - market * WHATNOT_FEE - low, 2)
-
-                # Store deal
-                dk = f"{card['name']}|{card['set']}|{card.get('rarity','')}"
-                ed = {f"{d['card']}|{d['set']}|{d['rarity']}": d for d in state["deals_found"]}
-                ed[dk] = {"card": card["name"], "set": card["set"], "rarity": card.get("rarity",""),
-                         "market_price": market, "low_price": low, "discount_pct": disc,
-                         "net_profit": profit, "source": "TCGPlayer",
-                         "url": pd.get("tcgplayer_url",""), "found_at": datetime.now().strftime("%H:%M:%S")}
-                state["deals_found"] = list(ed.values())
-
-                if should_alert(card, low):
-                    log("DEAL", f"  🔥 TCG: ${low} ({disc}% off) — ALERTING")
-                    txt = (f"🔥 <b>DEAL — TCGPlayer</b>\n\n<b>{card['name']}</b> [{card.get('rarity','')}]\n"
-                          f"📦 {card['set']}\n\n💰 Low: <b>${low}</b>\n📈 Market: ${market}\n"
-                          f"🏷️ {disc}% below\n💵 Profit: ~<b>${profit}</b>\n\n")
-                    if pd.get("tcgplayer_url"):
-                        txt += f'<a href="{pd["tcgplayer_url"]}">⚡ BUY ON TCGPLAYER</a>'
-                    if send_telegram(txt):
-                        state["alerts_sent"] += 1
-                    mark_alerted(card, low)
-                else:
-                    state["alerts_skipped"] += 1
-                    log("DEAL", f"  🔔 Already alerted — skip")
-            else:
-                log("SCAN", f"  → No TCG deal")
-
-            # Check eBay deal (if configured)
-            if EBAY_CLIENT_ID:
-                ebay = search_ebay(card["name"], card["set"])
-                if ebay and ebay["price"] > 0 and market > 0:
-                    ebay_disc = (market - ebay["price"]) / market
-                    if ebay_disc >= THRESHOLD and ebay["price"] >= MIN_PRICE:
-                        disc_pct = round(ebay_disc * 100, 1)
-                        profit = round(market - market * WHATNOT_FEE - ebay["price"], 2)
-                        ebay_key = f"EBAY|{card['name']}|{card['set']}|{card.get('rarity','')}"
-                        last_ebay = alerted_cards.get(ebay_key)
-                        if last_ebay is None or ebay["price"] <= last_ebay - PRICE_DROP_TO_REALERT:
-                            log("DEAL", f"  🛒 eBay: ${ebay['price']} ({disc_pct}% off) — ALERTING")
-                            txt = (f"🛒 <b>DEAL — eBay</b>\n\n<b>{card['name']}</b> [{card.get('rarity','')}]\n"
-                                  f"📦 {card['set']}\n\n💰 eBay BIN: <b>${ebay['price']}</b>\n"
-                                  f"📈 Market: ${market}\n🏷️ {disc_pct}% below\n"
-                                  f"💵 Profit: ~<b>${profit}</b>\n\n"
-                                  f'<a href="{ebay["url"]}">⚡ BUY ON EBAY</a>')
-                            if send_telegram(txt):
-                                state["alerts_sent"] += 1
-                                state["ebay_deals"] += 1
-                            alerted_cards[ebay_key] = ebay["price"]
-                            save_alerted(alerted_cards)
-                time.sleep(1)
-
-            time.sleep(2)
+            process_card(card, silent_mode=silent)
         except Exception as e:
             log("ERR", f"{card['name']}: {str(e)[:100]}")
             time.sleep(2)
 
-    state["batch_index"] = end if end < len(TARGETS) else 0
+    # Update batch index
+    next_idx = end if end < len(TARGETS) else 0
+    state["batch_index"] = next_idx
+
+    # If we just completed a full rotation
+    if next_idx == 0:
+        if not first_rotation_done:
+            first_rotation_done = True
+            log("SYS", f"✅ Silent scan complete — {len(alerted_cards)} deals pre-marked. Alerts now LIVE.")
+            send_telegram(f"🌿 <b>Minty Cards Agent v3.3</b>\n\n✅ Initial scan complete\n📊 {len(TARGETS)} cards / {len(set(t['set'] for t in TARGETS))} sets\n💰 {len(state['all_prices'])} prices loaded\n🔕 {len(alerted_cards)} deals pre-marked\n\nAlerts now LIVE — only NEW deals will notify.")
+        seen_card_ids.clear()
+
     state["running"] = False
     log("SYS", f"═══ DONE — next at card {state['batch_index']+1}/{len(TARGETS)} ═══")
 
@@ -373,9 +463,9 @@ def schedule_loop():
             state["running"] = False
         wait = REFRESH_MINUTES * 60 if state["batch_index"] == 0 else 30
         if state["batch_index"] != 0:
-            log("SYS", "More cards — next batch in 30s...")
+            log("SYS", "More cards — 30s...")
         else:
-            log("SYS", f"Full rotation done — next in {REFRESH_MINUTES} min...")
+            log("SYS", f"Waiting {REFRESH_MINUTES} min...")
         time.sleep(wait)
 
 def keep_alive():
@@ -387,12 +477,14 @@ def keep_alive():
             pass
         time.sleep(300)
 
+# ── Routes ──
 @app.route("/")
 def index():
-    return jsonify({"name": "Minty Cards Agent v3.2", "cards": len(TARGETS),
+    return jsonify({"name": "Minty Cards Agent v3.3", "cards": len(TARGETS),
                    "sets": len(set(t["set"] for t in TARGETS)),
                    "ebay": "connected" if EBAY_CLIENT_ID else "not configured",
-                   "endpoints": ["/status","/prices","/deals","/log","/hunt","/test-telegram","/alerted","/reset-alerts"]})
+                   "fixes": ["rarity-aware eBay search", "price sanity >50%", "min $5 profit",
+                            "card_id dedup", "silent first scan"]})
 
 @app.route("/ping")
 def ping():
@@ -402,11 +494,15 @@ def ping():
 def get_status():
     return jsonify({"running": state["running"], "last_scan": state["last_scan"],
                    "scan_count": state["scan_count"], "total_checked": state["total_cards_checked"],
-                   "batch": f"{state['batch_index']}/{len(TARGETS)}", "deals": len(state["deals_found"]),
+                   "batch": f"{state['batch_index']}/{len(TARGETS)}",
+                   "mode": "LIVE" if first_rotation_done else "SILENT (first scan)",
+                   "deals": len(state["deals_found"]),
                    "alerts_sent": state["alerts_sent"], "alerts_skipped": state["alerts_skipped"],
                    "ebay_deals": state["ebay_deals"],
+                   "ebay_wrong_card_filtered": state["ebay_skipped_wrong_card"],
                    "ebay": "connected" if EBAY_CLIENT_ID else "not configured",
-                   "cards_tracked": len(TARGETS), "threshold": f"{int(THRESHOLD*100)}%"})
+                   "cards_tracked": len(TARGETS), "threshold": f"{int(THRESHOLD*100)}%",
+                   "min_profit": f"${MIN_PROFIT}"})
 
 @app.route("/prices")
 def get_prices():
@@ -435,22 +531,23 @@ def manual_hunt():
 
 @app.route("/test-telegram")
 def test_tg():
-    ebay_status = "✅ eBay API connected" if EBAY_CLIENT_ID else "❌ eBay not configured"
-    ok = send_telegram(f"🌿 <b>Minty Cards Agent v3.2</b>\n\n📊 {len(TARGETS)} cards / {len(set(t['set'] for t in TARGETS))} sets\n{ebay_status}\n🔕 Smart alerts (saved to disk)\n⏱️ Every {REFRESH_MINUTES} min")
+    ok = send_telegram(f"🌿 <b>Minty Cards Agent v3.3</b>\n\n📊 {len(TARGETS)} cards / {len(set(t['set'] for t in TARGETS))} sets\n{'✅ eBay connected' if EBAY_CLIENT_ID else '❌ eBay not set'}\n🔕 Silent first scan\n💰 Min profit: ${MIN_PROFIT}\n🛡️ eBay sanity: >50% of market")
     return jsonify({"status": "sent" if ok else "failed"})
 
 @app.route("/reset-alerts")
 def reset():
     alerted_cards.clear()
     save_alerted(alerted_cards)
-    log("SYS", "Alert history cleared")
     return jsonify({"status": "cleared"})
 
-log("SYS", f"═══ Minty Cards Agent v3.2 — {len(TARGETS)} cards / {len(set(t['set'] for t in TARGETS))} sets ═══")
-log("SYS", f"Batch: {BATCH_SIZE}/cycle | Threshold: {int(THRESHOLD*100)}% | Min: ${MIN_PRICE} | Refresh: {REFRESH_MINUTES}min")
-log("SYS", f"Telegram: {'OK' if TELEGRAM_TOKEN else 'NOT SET'} | eBay: {'OK' if EBAY_CLIENT_ID else 'NOT SET'}")
-log("SYS", f"Alert history: {len(alerted_cards)} cards tracked (persisted to disk)")
-log("SYS", "Smart alerts: saved to disk, survives restarts. No more spam.")
+# ── Startup ──
+log("SYS", f"═══ Minty Cards Agent v3.3 — {len(TARGETS)} cards / {len(set(t['set'] for t in TARGETS))} sets ═══")
+log("SYS", f"Threshold: {int(THRESHOLD*100)}% | Min profit: ${MIN_PROFIT} | Min market: ${MIN_MARKET_PRICE}")
+log("SYS", f"eBay: {'connected' if EBAY_CLIENT_ID else 'NOT SET'} | eBay sanity: price must be >{int(EBAY_SANITY_FLOOR*100)}% of market")
+log("SYS", f"Telegram: {'OK' if TELEGRAM_TOKEN else 'NOT SET'}")
+log("SYS", f"Alert history: {len(alerted_cards)} pre-loaded from disk")
+log("SYS", "🔇 First full rotation will be SILENT (no alerts) to pre-mark existing deals")
+log("SYS", "After first rotation: only NEW deals or $2+ price drops will alert")
 
 threading.Thread(target=schedule_loop, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
