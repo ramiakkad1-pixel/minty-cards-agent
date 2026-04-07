@@ -2,467 +2,430 @@ import os
 import time
 import threading
 import requests
-import base64
-import urllib.parse
+import traceback
 from flask import Flask, jsonify
-from flask_cors import CORS
 from datetime import datetime
 
+# ═══════════════════════════════════════════════════════════════
+# MINTY CARDS ARBITRAGE AGENT v3.0
+# Uses pokemontcg.io API → real TCGPlayer market prices
+# No scraping. No eBay. No PokeTrace. No blocking. Ever.
+# ═══════════════════════════════════════════════════════════════
+
 app = Flask(__name__)
-CORS(app)
 
-# ═══ CREDENTIALS ═══
-TELEGRAM_TOKEN    = os.environ.get("TELEGRAM_TOKEN",   "8639012891:AAEsPGc6eISuFWVXpi7w3ORba75ha3R4woI")
-TELEGRAM_CHAT_ID  = os.environ.get("TELEGRAM_CHAT_ID", "7922849859")
-POKETRACE_KEY     = os.environ.get("POKETRACE_KEY",    "pc_4e02cbc645d9eba1f64a9ab79d4bdb6fd53c63e01414fdfa")
-EBAY_APP_ID       = os.environ.get("EBAY_APP_ID",      "RamiAkka-MyAPIKey-PRD-b64ce8038-2ac35fa0")
-EBAY_CERT_ID      = os.environ.get("EBAY_CERT_ID",     "PRD-64ce8038323f-12d0-44ed-a58d-5ee5")
+# ── Config ──
+TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+POKEMONTCG_KEY   = os.environ.get("POKEMONTCG_KEY", "")  # optional, higher rate limits
+THRESHOLD        = float(os.environ.get("THRESHOLD", "0.20"))  # 20% below market
+REFRESH_MINUTES  = int(os.environ.get("REFRESH_MINUTES", "10"))
+WHATNOT_FEE      = 0.15
+REQUEST_TIMEOUT  = 15  # seconds per API call
 
-# ═══ CONFIG ═══
-SINGLES_THRESHOLD = 0.20
-SEALED_THRESHOLD  = 0.30
-SEALED_MIN_PRICE  = 3.00
-REFRESH_MINUTES   = 5
-WHATNOT_FEE       = 0.15
-SEALED_FEE        = 0.12
-BATCH_SIZE        = 10
-
-# ═══ TARGET CARDS ═══
-SINGLES_TARGETS = [
-    {"name": "Umbreon ex",           "set": "Prismatic Evolutions", "rarity": "SAR", "search": "Umbreon ex Prismatic Evolutions"},
-    {"name": "Sylveon ex",           "set": "Prismatic Evolutions", "rarity": "SAR", "search": "Sylveon ex Prismatic Evolutions"},
-    {"name": "Eevee ex",             "set": "Prismatic Evolutions", "rarity": "SIR", "search": "Eevee ex Prismatic Evolutions"},
-    {"name": "Glaceon ex",           "set": "Prismatic Evolutions", "rarity": "SAR", "search": "Glaceon ex Prismatic Evolutions"},
-    {"name": "Espeon ex",            "set": "Prismatic Evolutions", "rarity": "IR",  "search": "Espeon ex Prismatic Evolutions"},
-    {"name": "Flareon ex",           "set": "Prismatic Evolutions", "rarity": "IR",  "search": "Flareon ex Prismatic Evolutions"},
-    {"name": "Vaporeon ex",          "set": "Prismatic Evolutions", "rarity": "IR",  "search": "Vaporeon ex Prismatic Evolutions"},
-    {"name": "Jolteon ex",           "set": "Prismatic Evolutions", "rarity": "IR",  "search": "Jolteon ex Prismatic Evolutions"},
-    {"name": "Leafeon ex",           "set": "Prismatic Evolutions", "rarity": "IR",  "search": "Leafeon ex Prismatic Evolutions"},
-    {"name": "Charizard ex",         "set": "Paldean Fates",        "rarity": "SAR", "search": "Charizard ex Paldean Fates"},
-    {"name": "Meowscarada ex",       "set": "Paldean Fates",        "rarity": "SIR", "search": "Meowscarada ex Paldean Fates"},
-    {"name": "Teal Mask Ogerpon ex", "set": "Paldean Fates",        "rarity": "SAR", "search": "Ogerpon ex Paldean Fates"},
-    {"name": "Iron Valiant ex",      "set": "Paldean Fates",        "rarity": "SAR", "search": "Iron Valiant ex Paldean Fates"},
-    {"name": "Dragapult ex",         "set": "Destined Rivals",      "rarity": "SAR", "search": "Dragapult ex Destined Rivals"},
-    {"name": "Miraidon ex",          "set": "Destined Rivals",      "rarity": "SIR", "search": "Miraidon ex Destined Rivals"},
-    {"name": "Koraidon ex",          "set": "Destined Rivals",      "rarity": "SAR", "search": "Koraidon ex Destined Rivals"},
-    {"name": "Mewtwo ex",            "set": "151",                  "rarity": "SIR", "search": "Mewtwo ex 151 pokemon"},
-    {"name": "Mew ex",               "set": "151",                  "rarity": "SAR", "search": "Mew ex 151 pokemon"},
-    {"name": "Gengar ex",            "set": "151",                  "rarity": "SAR", "search": "Gengar ex 151 pokemon"},
-    {"name": "Blastoise ex",         "set": "151",                  "rarity": "SAR", "search": "Blastoise ex 151 pokemon"},
-    {"name": "Venusaur ex",          "set": "151",                  "rarity": "Rainbow", "search": "Venusaur ex 151 rainbow"},
-    {"name": "Charizard ex",         "set": "151",                  "rarity": "SAR", "search": "Charizard ex 151 pokemon"},
-    {"name": "Pikachu ex",           "set": "Surging Sparks",       "rarity": "SAR", "search": "Pikachu ex Surging Sparks"},
-    {"name": "Raichu ex",            "set": "Surging Sparks",       "rarity": "SIR", "search": "Raichu ex Surging Sparks"},
-    {"name": "Zapdos ex",            "set": "Surging Sparks",       "rarity": "Rainbow", "search": "Zapdos ex Surging Sparks"},
-    {"name": "Stellar Rayquaza ex",  "set": "Stellar Crown",        "rarity": "SAR", "search": "Rayquaza ex Stellar Crown"},
-    {"name": "Terapagos ex",         "set": "Stellar Crown",        "rarity": "SIR", "search": "Terapagos ex Stellar Crown"},
-    {"name": "Pecharunt ex",         "set": "Stellar Crown",        "rarity": "SAR", "search": "Pecharunt ex Stellar Crown"},
-    {"name": "Ogerpon ex",           "set": "Twilight Masquerade",  "rarity": "SAR", "search": "Ogerpon ex Twilight Masquerade"},
-    {"name": "Bloodmoon Ursaluna ex","set": "Twilight Masquerade",  "rarity": "SAR", "search": "Ursaluna ex Twilight Masquerade"},
-    {"name": "Roaring Moon ex",      "set": "Paradox Rift",         "rarity": "SAR", "search": "Roaring Moon ex Paradox Rift"},
-    {"name": "Iron Valiant ex",      "set": "Paradox Rift",         "rarity": "SAR", "search": "Iron Valiant ex Paradox Rift"},
-    {"name": "Charizard ex",         "set": "Obsidian Flames",      "rarity": "SAR", "search": "Charizard ex Obsidian Flames"},
-    {"name": "Tyranitar ex",         "set": "Obsidian Flames",      "rarity": "SAR", "search": "Tyranitar ex Obsidian Flames"},
-    {"name": "Walking Wake ex",      "set": "Temporal Forces",      "rarity": "SAR", "search": "Walking Wake ex Temporal Forces"},
-    {"name": "Iron Leaves ex",       "set": "Temporal Forces",      "rarity": "SAR", "search": "Iron Leaves ex Temporal Forces"},
+# ── Card targets ──
+# Each card has a pokemontcg.io search query and card_id if known
+# The API returns TCGPlayer market prices for every card
+TARGETS = [
+    # Prismatic Evolutions
+    {"name": "Umbreon ex",    "set": "Prismatic Evolutions", "rarity": "SAR", "q": 'name:"Umbreon ex" set.name:"Prismatic Evolutions"'},
+    {"name": "Sylveon ex",    "set": "Prismatic Evolutions", "rarity": "SAR", "q": 'name:"Sylveon ex" set.name:"Prismatic Evolutions"'},
+    {"name": "Eevee ex",      "set": "Prismatic Evolutions", "rarity": "SIR", "q": 'name:"Eevee ex" set.name:"Prismatic Evolutions"'},
+    {"name": "Glaceon ex",    "set": "Prismatic Evolutions", "rarity": "SAR", "q": 'name:"Glaceon ex" set.name:"Prismatic Evolutions"'},
+    {"name": "Espeon ex",     "set": "Prismatic Evolutions", "rarity": "IR",  "q": 'name:"Espeon ex" set.name:"Prismatic Evolutions"'},
+    {"name": "Flareon ex",    "set": "Prismatic Evolutions", "rarity": "IR",  "q": 'name:"Flareon ex" set.name:"Prismatic Evolutions"'},
+    {"name": "Vaporeon ex",   "set": "Prismatic Evolutions", "rarity": "IR",  "q": 'name:"Vaporeon ex" set.name:"Prismatic Evolutions"'},
+    {"name": "Jolteon ex",    "set": "Prismatic Evolutions", "rarity": "IR",  "q": 'name:"Jolteon ex" set.name:"Prismatic Evolutions"'},
+    {"name": "Leafeon ex",    "set": "Prismatic Evolutions", "rarity": "IR",  "q": 'name:"Leafeon ex" set.name:"Prismatic Evolutions"'},
+    # Paldean Fates
+    {"name": "Charizard ex",  "set": "Paldean Fates",        "rarity": "SAR", "q": 'name:"Charizard ex" set.name:"Paldean Fates"'},
+    {"name": "Mew ex",        "set": "Paldean Fates",        "rarity": "SIR", "q": 'name:"Mew ex" set.name:"Paldean Fates"'},
+    {"name": "Mimikyu ex",    "set": "Paldean Fates",        "rarity": "SAR", "q": 'name:"Mimikyu ex" set.name:"Paldean Fates"'},
+    # 151
+    {"name": "Charizard ex",  "set": "151",                  "rarity": "SAR", "q": 'name:"Charizard ex" set.name:"151"'},
+    {"name": "Mewtwo ex",     "set": "151",                  "rarity": "SIR", "q": 'name:"Mewtwo ex" set.name:"151"'},
+    {"name": "Mew ex",        "set": "151",                  "rarity": "SAR", "q": 'name:"Mew ex" set.name:"151"'},
+    {"name": "Alakazam ex",   "set": "151",                  "rarity": "SIR", "q": 'name:"Alakazam ex" set.name:"151"'},
+    # Destined Rivals
+    {"name": "Mewtwo ex",     "set": "Destined Rivals",      "rarity": "SAR", "q": 'name:"Mewtwo ex" set.name:"Destined Rivals"'},
+    {"name": "Giovanni",      "set": "Destined Rivals",      "rarity": "SAR", "q": 'name:"Giovanni" set.name:"Destined Rivals"'},
+    {"name": "Dragapult ex",  "set": "Destined Rivals",      "rarity": "SAR", "q": 'name:"Dragapult ex" set.name:"Destined Rivals"'},
+    # Surging Sparks
+    {"name": "Pikachu ex",    "set": "Surging Sparks",       "rarity": "SAR", "q": 'name:"Pikachu ex" set.name:"Surging Sparks"'},
+    {"name": "Arceus ex",     "set": "Surging Sparks",       "rarity": "SIR", "q": 'name:"Arceus ex" set.name:"Surging Sparks"'},
+    # Stellar Crown
+    {"name": "Terapagos ex",  "set": "Stellar Crown",        "rarity": "SIR", "q": 'name:"Terapagos ex" set.name:"Stellar Crown"'},
+    # Twilight Masquerade
+    {"name": "Bloodmoon Ursaluna ex", "set": "Twilight Masquerade", "rarity": "SIR", "q": 'name:"Bloodmoon Ursaluna ex" set.name:"Twilight Masquerade"'},
+    # Obsidian Flames
+    {"name": "Charizard ex",  "set": "Obsidian Flames",      "rarity": "SIR", "q": 'name:"Charizard ex" set.name:"Obsidian Flames"'},
 ]
 
-SEALED_TARGETS = [
-    {"name": "Prismatic Evolutions Booster Box", "type": "Booster Box", "set": "Prismatic Evolutions"},
-    {"name": "Prismatic Evolutions ETB",         "type": "ETB",         "set": "Prismatic Evolutions"},
-    {"name": "Paldean Fates Booster Box",        "type": "Booster Box", "set": "Paldean Fates"},
-    {"name": "Paldean Fates ETB",                "type": "ETB",         "set": "Paldean Fates"},
-    {"name": "Destined Rivals Booster Box",      "type": "Booster Box", "set": "Destined Rivals"},
-    {"name": "Destined Rivals ETB",              "type": "ETB",         "set": "Destined Rivals"},
-    {"name": "151 ETB",                          "type": "ETB",         "set": "151"},
-    {"name": "Stellar Crown Booster Box",        "type": "Booster Box", "set": "Stellar Crown"},
-    {"name": "Surging Sparks Booster Box",       "type": "Booster Box", "set": "Surging Sparks"},
-    {"name": "Obsidian Flames Booster Box",      "type": "Booster Box", "set": "Obsidian Flames"},
-]
-
-# ═══ STATE ═══
+# ── State ──
 state = {
-    "last_scan": None,
-    "deals_found": [],
-    "sealed_deals": [],
-    "scan_count": 0,
-    "total_scanned": 0,
-    "alerts_sent": 0,
-    "log": [],
     "running": False,
-    "batch_index": 0,
+    "last_scan": "never",
+    "scan_count": 0,
+    "total_cards_checked": 0,
+    "deals_found": [],
+    "all_prices": [],
+    "alerts_sent": 0,
+    "errors": [],
+    "log": [],
 }
 
-ebay_token_cache = {"token": None, "expires": 0}
-sealed_price_cache = {}
-
 # ═══ LOGGING ═══
-def log(level, msg):
-    entry = {"time": datetime.now().strftime("%H:%M:%S"), "level": level, "msg": msg}
+def log(tag, msg):
+    ts = datetime.now().strftime("%H:%M:%S")
+    entry = {"time": ts, "tag": tag, "msg": msg}
     state["log"].append(entry)
-    if len(state["log"]) > 500:
-        state["log"] = state["log"][-500:]
-    print("[" + entry["time"] + "] [" + level + "] " + msg)
+    if len(state["log"]) > 200:
+        state["log"] = state["log"][-200:]
+    print(f"[{ts}] [{tag}] {msg}")
+
 
 # ═══ TELEGRAM ═══
-def send_telegram(msg):
+def send_telegram(text):
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        log("TG", "Telegram not configured — skipping alert")
+        return False
     try:
-        url = "https://api.telegram.org/bot" + TELEGRAM_TOKEN + "/sendMessage"
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         resp = requests.post(url, json={
             "chat_id": TELEGRAM_CHAT_ID,
-            "text": msg,
+            "text": text,
             "parse_mode": "HTML",
-            "disable_web_page_preview": True
+            "disable_web_page_preview": True,
         }, timeout=10)
         if resp.status_code == 200:
-            state["alerts_sent"] += 1
-            log("ALERT", "Telegram sent OK")
+            log("TG", "Alert sent!")
+            return True
         else:
-            log("ALERT", "Telegram error: " + resp.text[:80])
+            log("TG", f"Failed: {resp.status_code} — {resp.text[:100]}")
+            return False
     except Exception as e:
-        log("ALERT", "Telegram failed: " + str(e)[:50])
+        log("TG", f"Error: {str(e)}")
+        return False
 
-# ═══ KEEP ALIVE ═══
-def keep_alive():
-    while True:
-        time.sleep(240)
-        try:
-            own_url = os.environ.get("RENDER_EXTERNAL_URL", "http://localhost:10000")
-            requests.get(own_url + "/status", timeout=5)
-            log("SYS", "Keep-alive ping OK")
-        except Exception:
-            pass
 
-# ═══ EBAY OAUTH TOKEN ═══
-def get_ebay_token():
-    now = time.time()
-    if ebay_token_cache["token"] and ebay_token_cache["expires"] > now + 60:
-        return ebay_token_cache["token"]
-
+# ═══ PRICE FETCHING — pokemontcg.io API ═══
+def get_tcg_price(card):
+    """
+    Calls pokemontcg.io API to get TCGPlayer market prices.
+    Returns dict with market_price, low_price, tcgplayer_url, or None on failure.
+    """
     try:
-        credentials = EBAY_APP_ID + ":" + EBAY_CERT_ID
-        encoded = base64.b64encode(credentials.encode()).decode()
-        resp = requests.post(
-            "https://api.ebay.com/identity/v1/oauth2/token",
-            headers={
-                "Authorization": "Basic " + encoded,
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-            data="grant_type=client_credentials&scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope",
-            timeout=10
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            ebay_token_cache["token"] = data["access_token"]
-            ebay_token_cache["expires"] = now + data.get("expires_in", 7200)
-            log("SYS", "eBay token refreshed OK")
-            return ebay_token_cache["token"]
-        else:
-            log("SYS", "eBay token error: " + resp.text[:100])
-    except Exception as e:
-        log("SYS", "eBay token failed: " + str(e)[:50])
-    return None
+        headers = {"Content-Type": "application/json"}
+        if POKEMONTCG_KEY:
+            headers["X-Api-Key"] = POKEMONTCG_KEY
 
-# ═══ EBAY BROWSE API — find cheapest listing ═══
-def ebay_find_cheapest(search_query, min_price=0.99):
-    token = get_ebay_token()
-    if not token:
-        return None, None
-    try:
-        url = "https://api.ebay.com/buy/browse/v1/item_summary/search"
-        params = {
-            "q": search_query + " pokemon NM",
-            "sort": "price",
-            "limit": "10",
-            "filter": "buyingOptions:{FIXED_PRICE},conditions:{NEW|LIKE_NEW}",
-        }
-        headers = {
-            "Authorization": "Bearer " + token,
-            "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
-            "Content-Type": "application/json",
-        }
-        resp = requests.get(url, headers=headers, params=params, timeout=10)
-        if resp.status_code != 200:
-            log("SYS", "eBay Browse error " + str(resp.status_code) + ": " + resp.text[:80])
-            return None, None
+        url = "https://api.pokemontcg.io/v2/cards"
+        params = {"q": card["q"], "pageSize": 5}
 
-        data = resp.json()
-        items = data.get("itemSummaries", [])
-
-        for item in items:
-            price_info = item.get("price", {})
-            price = float(price_info.get("value", 0))
-            link  = item.get("itemWebUrl", "")
-            if price > min_price:
-                return price, link
-
-    except Exception as e:
-        log("SYS", "eBay Browse failed: " + str(e)[:50])
-    return None, None
-
-# ═══ POKETRACE — get market price ═══
-def get_card_market_price(search_term):
-    try:
-        url = "https://api.poketrace.com/v1/cards"
-        params = {"search": search_term, "market": "US", "limit": 3}
-        headers = {"X-API-Key": POKETRACE_KEY, "Accept": "application/json"}
-        resp = requests.get(url, headers=headers, params=params, timeout=10)
+        resp = requests.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
 
         if resp.status_code == 429:
-            log("SYS", "PokeTrace rate limit — waiting 60s")
-            time.sleep(60)
+            log("API", f"Rate limited — waiting 30s")
+            time.sleep(30)
             return None
 
         if resp.status_code != 200:
-            log("SYS", "PokeTrace error " + str(resp.status_code))
+            log("API", f"HTTP {resp.status_code} for {card['name']} — {resp.text[:80]}")
             return None
 
-        cards = resp.json().get("data", [])
+        data = resp.json()
+        cards = data.get("data", [])
+
         if not cards:
+            log("API", f"No results for {card['name']} [{card['set']}]")
             return None
 
-        prices = cards[0].get("prices", {})
-        ebay_avg = prices.get("ebay", {}).get("NEAR_MINT", {}).get("avg", 0)
-        tcg_avg  = prices.get("tcgplayer", {}).get("NEAR_MINT", {}).get("avg", 0)
+        # Find the best match — prefer the one with highest rarity / prices
+        best = None
+        best_price = 0
 
-        if ebay_avg > 0 and tcg_avg > 0:
-            return round((ebay_avg + tcg_avg) / 2, 2)
-        elif ebay_avg > 0:
-            return round(ebay_avg, 2)
-        elif tcg_avg > 0:
-            return round(tcg_avg, 2)
+        for c in cards:
+            tcg = c.get("tcgplayer", {})
+            prices = tcg.get("prices", {})
+            tcg_url = tcg.get("url", "")
+
+            # Try all price types: holofoil, reverseHolofoil, normal, 1stEditionHolofoil
+            for price_type in ["holofoil", "reverseHolofoil", "normal", "1stEditionHolofoil", "unlimitedHolofoil"]:
+                p = prices.get(price_type, {})
+                market = p.get("market", 0) or 0
+                low = p.get("low", 0) or 0
+                mid = p.get("mid", 0) or 0
+
+                if market > best_price:
+                    best_price = market
+                    best = {
+                        "market_price": round(market, 2),
+                        "low_price": round(low, 2),
+                        "mid_price": round(mid, 2),
+                        "tcgplayer_url": tcg_url,
+                        "card_id": c.get("id", ""),
+                        "card_name": c.get("name", card["name"]),
+                        "set_name": c.get("set", {}).get("name", card["set"]),
+                        "rarity": c.get("rarity", card.get("rarity", "")),
+                        "image": c.get("images", {}).get("small", ""),
+                        "price_type": price_type,
+                    }
+
+        if best and best["market_price"] > 0:
+            return best
+        else:
+            log("API", f"No price data for {card['name']} [{card['set']}]")
+            return None
+
+    except requests.exceptions.Timeout:
+        log("API", f"Timeout for {card['name']} — skipping")
+        return None
+    except requests.exceptions.ConnectionError as e:
+        log("API", f"Connection error for {card['name']}: {str(e)[:80]}")
+        return None
+    except Exception as e:
+        log("API", f"Error for {card['name']}: {str(e)[:80]}")
         return None
 
-    except Exception as e:
-        log("SYS", "PokeTrace error: " + str(e)[:50])
+
+# ═══ DEAL DETECTION ═══
+def check_for_deals(card, price_data):
+    """
+    Check if the low price represents a deal (significantly below market).
+    If low is X% below market → that's a snipe opportunity.
+    """
+    market = price_data["market_price"]
+    low = price_data["low_price"]
+
+    if market <= 0 or low <= 0:
+        return None
+
+    discount_pct = (market - low) / market
+
+    if discount_pct >= THRESHOLD:
+        # Calculate Whatnot arb profit
+        sell_price = market  # sell at market on Whatnot
+        whatnot_fee = sell_price * WHATNOT_FEE
+        net_profit = round(sell_price - whatnot_fee - low, 2)
+        discount_display = round(discount_pct * 100, 1)
+
+        deal = {
+            "card": card["name"],
+            "set": card["set"],
+            "rarity": card.get("rarity", ""),
+            "market_price": market,
+            "low_price": low,
+            "discount_pct": discount_display,
+            "net_profit": net_profit,
+            "tcgplayer_url": price_data.get("tcgplayer_url", ""),
+            "image": price_data.get("image", ""),
+            "found_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        return deal
+
     return None
 
-# ═══ SINGLES HUNT ═══
-def hunt_singles_batch():
-    idx   = state["batch_index"]
-    batch = SINGLES_TARGETS[idx: idx + BATCH_SIZE]
-    state["batch_index"] = 0 if idx + BATCH_SIZE >= len(SINGLES_TARGETS) else idx + BATCH_SIZE
 
-    log("SYS", "Singles batch " + str(idx) + "-" + str(idx + len(batch)) + " of " + str(len(SINGLES_TARGETS)))
-
-    for card in batch:
-        if not state["running"]:
-            break
-
-        name     = card["name"]
-        set_name = card["set"]
-        rarity   = card["rarity"]
-        search   = card["search"]
-        state["total_scanned"] += 1
-
-        log("SCAN", name + " [" + rarity + "] — " + set_name)
-
-        # Step 1: Get market price from PokeTrace
-        market = get_card_market_price(search)
-        if not market or market < 10:
-            log("SYS", "Skip " + name + " — no price or under $10")
-            time.sleep(0.5)
-            continue
-
-        log("FIND", name + " market: $" + str(market))
-
-        # Step 2: Find cheapest live eBay listing via official API
-        cheapest, link = ebay_find_cheapest(search)
-        if not cheapest:
-            log("SYS", "No eBay listings found for " + name)
-            time.sleep(0.5)
-            continue
-
-        # Step 3: Check if it's a deal
-        discount = (market - cheapest) / market
-        if discount >= SINGLES_THRESHOLD:
-            pct          = round(discount * 100)
-            whatnot_sell = round(market * 1.05, 2)
-            net_profit   = round(whatnot_sell * (1 - WHATNOT_FEE) - cheapest, 2)
-
-            deal = {
-                "id": name.replace(" ", "-") + "-" + set_name.replace(" ", "-"),
-                "name": name,
-                "set": set_name,
-                "rarity": rarity,
-                "platform": "eBay",
-                "buyPrice": cheapest,
-                "market": market,
-                "whatnotSell": whatnot_sell,
-                "netProfit": net_profit,
-                "pct": pct,
-                "link": link,
-                "condition": "NM/LP",
-                "time": datetime.now().strftime("%H:%M"),
-            }
-
-            existing = [d for d in state["deals_found"] if d["id"] != deal["id"]]
-            existing.append(deal)
-            existing.sort(key=lambda x: x["netProfit"], reverse=True)
-            state["deals_found"] = existing[:50]
-
-            log("DEAL", "DEAL: " + name + " @ $" + str(cheapest) + " — " + str(pct) + "% below $" + str(market) + " — profit ~$" + str(net_profit))
-
-            send_telegram(
-                "🌿 <b>MINTY CARDS DEAL</b>\n\n"
-                "<b>" + name + "</b> [" + rarity + "]\n"
-                + set_name + "\n\n"
-                "💰 Buy: <b>$" + str(cheapest) + "</b> on eBay\n"
-                "📈 Market avg: $" + str(market) + "\n"
-                "🏪 Whatnot sell: ~$" + str(whatnot_sell) + "\n"
-                "✅ Net profit: ~<b>$" + str(net_profit) + "</b>\n"
-                "🔥 " + str(pct) + "% below market\n\n"
-                "<a href='" + link + "'>⚡ BUY NOW ON EBAY</a>"
-            )
-        else:
-            log("FIND", name + " cheapest $" + str(cheapest) + " vs market $" + str(market) + " — " + str(round(discount * 100)) + "% below, skip")
-
-        time.sleep(1)
-
-    log("SYS", "Batch complete — " + str(len(state["deals_found"])) + " active deals")
-
-# ═══ SEALED HUNT ═══
-def hunt_sealed():
-    log("SYS", "Sealed hunt — " + str(len(SEALED_TARGETS)) + " products")
-    new_deals = []
-
-    for product in SEALED_TARGETS:
-        if not state["running"]:
-            break
-
-        name = product["name"]
-        log("SCAN", "Sealed: " + name)
-        state["total_scanned"] += 1
-
-        if name in sealed_price_cache:
-            market = sealed_price_cache[name]
-        else:
-            market = get_card_market_price(name)
-            if market and market > 5:
-                sealed_price_cache[name] = market
-
-        if not market or market < 5:
-            log("SYS", "No price for " + name)
-            time.sleep(0.5)
-            continue
-
-        log("FIND", name + " market: $" + str(market))
-
-        cheapest, link = ebay_find_cheapest(name + " sealed", min_price=SEALED_MIN_PRICE)
-        if not cheapest or cheapest < SEALED_MIN_PRICE:
-            if cheapest:
-                log("ALERT", "Bait filtered: " + name + " @ $" + str(cheapest))
-            else:
-                log("SYS", "No listings for " + name)
-            time.sleep(0.5)
-            continue
-
-        discount = (market - cheapest) / market
-        if discount >= SEALED_THRESHOLD:
-            pct        = round(discount * 100)
-            net_profit = round(market * (1 - SEALED_FEE) - cheapest, 2)
-
-            deal = {
-                "id": "seal-" + name.replace(" ", "-"),
-                "name": name,
-                "type": product["type"],
-                "set": product["set"],
-                "platform": "eBay",
-                "buyPrice": cheapest,
-                "market": market,
-                "netProfit": net_profit,
-                "pct": pct,
-                "link": link,
-                "time": datetime.now().strftime("%H:%M"),
-            }
-            new_deals.append(deal)
-            log("DEAL", "SEALED: " + name + " @ $" + str(cheapest) + " — " + str(pct) + "% below $" + str(market))
-
-            send_telegram(
-                "📦 <b>MINTY SEALED DEAL</b>\n\n"
-                "<b>" + name + "</b>\n"
-                + product["set"] + " · " + product["type"] + "\n\n"
-                "💰 Buy: <b>$" + str(cheapest) + "</b> on eBay\n"
-                "📈 Market avg: $" + str(market) + "\n"
-                "✅ Net profit: ~<b>$" + str(net_profit) + "</b>\n"
-                "🔥 " + str(pct) + "% below market\n\n"
-                "<a href='" + link + "'>⚡ BUY NOW ON EBAY</a>"
-            )
-        else:
-            log("FIND", name + " $" + str(cheapest) + " vs $" + str(market) + " — not enough discount")
-
-        time.sleep(1)
-
-    state["sealed_deals"] = new_deals
-    log("SYS", "Sealed complete — " + str(len(new_deals)) + " deals")
-
-# ═══ HUNT LOOP ═══
-def run_full_hunt():
+# ═══ HUNT CYCLE ═══
+def run_hunt():
     if state["running"]:
         log("SYS", "Already running — skip")
         return
+
     state["running"] = True
     state["scan_count"] += 1
     state["last_scan"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    log("SYS", "=== CYCLE #" + str(state["scan_count"]) + " — PokeTrace + eBay API ===")
-    try:
-        hunt_singles_batch()
-        if state["scan_count"] % 6 == 0:
-            hunt_sealed()
-    except Exception as e:
-        log("SYS", "Hunt error: " + str(e))
-    finally:
-        state["running"] = False
-        log("SYS", "=== CYCLE #" + str(state["scan_count"]) + " COMPLETE ===")
+    cycle = state["scan_count"]
 
+    log("SYS", f"═══ CYCLE #{cycle} — scanning {len(TARGETS)} cards ═══")
+
+    new_deals = []
+    new_prices = []
+    cards_checked = 0
+    errors = 0
+
+    for i, card in enumerate(TARGETS):
+        try:
+            log("SCAN", f"[{i+1}/{len(TARGETS)}] {card['name']} [{card['rarity']}] — {card['set']}")
+
+            price_data = get_tcg_price(card)
+
+            if price_data is None:
+                errors += 1
+                log("SCAN", f"  → No price data (error)")
+                # Small delay even on error to be nice to API
+                time.sleep(1)
+                continue
+
+            cards_checked += 1
+            state["total_cards_checked"] += 1
+
+            log("PRICE", f"  → Market: ${price_data['market_price']} | Low: ${price_data['low_price']} | Mid: ${price_data['mid_price']}")
+
+            # Store price snapshot
+            new_prices.append({
+                "card": card["name"],
+                "set": card["set"],
+                "rarity": card.get("rarity", ""),
+                "market": price_data["market_price"],
+                "low": price_data["low_price"],
+                "tcgplayer_url": price_data.get("tcgplayer_url", ""),
+            })
+
+            # Check for deal
+            deal = check_for_deals(card, price_data)
+            if deal:
+                new_deals.append(deal)
+                log("DEAL", f"  🔥 DEAL! {deal['card']} — ${deal['low_price']} ({deal['discount_pct']}% below market ${deal['market_price']})")
+
+                # Send Telegram alert
+                alert_text = (
+                    f"🔥 <b>DEAL FOUND</b>\n\n"
+                    f"<b>{deal['card']}</b> [{deal['rarity']}]\n"
+                    f"📦 {deal['set']}\n\n"
+                    f"💰 TCGPlayer Low: <b>${deal['low_price']}</b>\n"
+                    f"📈 Market Price: ${deal['market_price']}\n"
+                    f"🏷️ {deal['discount_pct']}% below market\n\n"
+                    f"💵 Whatnot Arb Profit: ~<b>${deal['net_profit']}</b>\n"
+                    f"  (sell at ${deal['market_price']} - 15% fee - ${deal['low_price']} cost)\n\n"
+                )
+                if deal.get("tcgplayer_url"):
+                    alert_text += f"<a href=\"{deal['tcgplayer_url']}\">⚡ BUY ON TCGPLAYER</a>"
+
+                if send_telegram(alert_text):
+                    state["alerts_sent"] += 1
+            else:
+                log("SCAN", f"  → No deal (low is not {int(THRESHOLD*100)}%+ below market)")
+
+            # Rate limit: 1 request per 2 seconds (safe for no-key tier: 30/min)
+            time.sleep(2)
+
+        except Exception as e:
+            errors += 1
+            log("ERR", f"Error on {card['name']}: {str(e)[:100]}")
+            state["errors"].append({"card": card["name"], "error": str(e)[:200], "time": datetime.now().strftime("%H:%M:%S")})
+            if len(state["errors"]) > 50:
+                state["errors"] = state["errors"][-50:]
+            time.sleep(2)
+
+    state["deals_found"] = new_deals
+    state["all_prices"] = new_prices
+    state["running"] = False
+
+    log("SYS", f"═══ CYCLE #{cycle} COMPLETE — {cards_checked} checked, {errors} errors, {len(new_deals)} deals ═══")
+
+
+# ═══ SCHEDULER ═══
 def schedule_loop():
+    # Small startup delay to let Flask start
+    time.sleep(5)
     while True:
-        run_full_hunt()
+        try:
+            run_hunt()
+        except Exception as e:
+            log("SYS", f"Schedule error: {str(e)[:100]}")
+            state["running"] = False
+        log("SYS", f"Next scan in {REFRESH_MINUTES} minutes...")
         time.sleep(REFRESH_MINUTES * 60)
+
+
+# ═══ KEEP ALIVE (pings self to prevent Render sleep) ═══
+def keep_alive():
+    time.sleep(60)
+    while True:
+        try:
+            requests.get("https://minty-cards-agent.onrender.com/ping", timeout=5)
+        except:
+            pass
+        time.sleep(300)  # every 5 min
+
 
 # ═══ ROUTES ═══
 @app.route("/")
 def index():
-    return "Minty Cards Agent — PokeTrace + eBay API. /status /deals /log /hunt"
+    return jsonify({
+        "name": "Minty Cards Arbitrage Agent v3.0",
+        "status": "running" if state["running"] else "idle",
+        "endpoints": ["/status", "/prices", "/deals", "/log", "/hunt", "/test-telegram", "/ping"],
+        "powered_by": "pokemontcg.io API → TCGPlayer market prices",
+        "source": "No scraping. No eBay. No PokeTrace. Clean API only.",
+    })
+
+@app.route("/ping")
+def ping():
+    return "pong"
 
 @app.route("/status")
-def status():
+def get_status():
     return jsonify({
         "running": state["running"],
         "last_scan": state["last_scan"],
         "scan_count": state["scan_count"],
-        "total_scanned": state["total_scanned"],
-        "singles_deals": len(state["deals_found"]),
-        "sealed_deals": len(state["sealed_deals"]),
-        "alerts_sent": state["alerts_sent"],
-        "card_coverage": str(state["batch_index"]) + "/" + str(len(SINGLES_TARGETS)),
+        "total_cards_checked": state["total_cards_checked"],
+        "current_deals": len(state["deals_found"]),
+        "total_alerts_sent": state["alerts_sent"],
+        "recent_errors": len(state["errors"]),
+        "cards_tracked": len(TARGETS),
         "refresh_minutes": REFRESH_MINUTES,
-        "powered_by": "PokeTrace + eBay Official API",
+        "threshold": f"{int(THRESHOLD*100)}% below market",
+        "powered_by": "pokemontcg.io → TCGPlayer prices",
+    })
+
+@app.route("/prices")
+def get_prices():
+    return jsonify({
+        "last_scan": state["last_scan"],
+        "count": len(state["all_prices"]),
+        "prices": state["all_prices"],
     })
 
 @app.route("/deals")
-def deals():
-    return jsonify({"singles": state["deals_found"], "sealed": state["sealed_deals"]})
+def get_deals():
+    return jsonify({
+        "last_scan": state["last_scan"],
+        "count": len(state["deals_found"]),
+        "deals": state["deals_found"],
+    })
 
 @app.route("/log")
 def get_log():
     return jsonify(state["log"][-100:])
 
+@app.route("/errors")
+def get_errors():
+    return jsonify(state["errors"][-50:])
+
 @app.route("/hunt")
 def manual_hunt():
     if state["running"]:
-        return jsonify({"status": "already running"})
-    threading.Thread(target=run_full_hunt, daemon=True).start()
-    return jsonify({"status": "hunt started"})
+        return jsonify({"status": "already running — check /log"})
+    threading.Thread(target=run_hunt, daemon=True).start()
+    return jsonify({"status": "hunt started — check /log in 60 seconds"})
 
 @app.route("/test-telegram")
 def test_telegram():
-    send_telegram("🌿 <b>Minty Cards Agent</b> — PokeTrace + eBay API live. No more blocking!")
-    return jsonify({"status": "sent"})
+    ok = send_telegram(
+        "🌿 <b>Minty Cards Agent v3.0</b>\n\n"
+        "✅ Telegram connected!\n"
+        f"📊 Tracking {len(TARGETS)} cards\n"
+        f"⏱️ Scanning every {REFRESH_MINUTES} min\n"
+        f"🎯 Alert threshold: {int(THRESHOLD*100)}% below market\n\n"
+        "Powered by pokemontcg.io → TCGPlayer prices"
+    )
+    return jsonify({"status": "sent" if ok else "failed — check /log"})
 
-# ═══ START ═══
-log("SYS", "Minty Cards Agent — PokeTrace + official eBay API")
-log("SYS", str(len(SINGLES_TARGETS)) + " cards · " + str(BATCH_SIZE) + " per cycle · 5 min · " + str(len(SEALED_TARGETS)) + " sealed every 30 min")
+
+# ═══ STARTUP ═══
+log("SYS", "═══ Minty Cards Agent v3.0 starting ═══")
+log("SYS", f"Tracking {len(TARGETS)} cards")
+log("SYS", f"Threshold: {int(THRESHOLD*100)}% below TCGPlayer market")
+log("SYS", f"Refresh: every {REFRESH_MINUTES} minutes")
+log("SYS", f"Telegram: {'configured' if TELEGRAM_TOKEN else 'NOT SET — add TELEGRAM_TOKEN env var'}")
+log("SYS", f"API key: {'set (higher limits)' if POKEMONTCG_KEY else 'not set (using free tier — 30 req/min)'}")
+log("SYS", "Data source: pokemontcg.io → real TCGPlayer market prices")
+log("SYS", "No scraping. No eBay. No PokeTrace. Clean API calls only.")
+
+# Start background threads
 threading.Thread(target=schedule_loop, daemon=True).start()
 threading.Thread(target=keep_alive, daemon=True).start()
 
