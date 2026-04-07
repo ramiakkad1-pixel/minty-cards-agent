@@ -4,7 +4,7 @@ import threading
 import requests
 import json
 import base64
-from flask import Flask, jsonify
+from flask import Flask, jsonify, Response
 from datetime import datetime
 
 # ═══════════════════════════════════════════════════════════════
@@ -34,6 +34,261 @@ WHATNOT_FEE        = 0.15
 REQUEST_TIMEOUT    = 15
 BATCH_SIZE         = 10
 PRICE_DROP_TO_REALERT = 2.00
+
+# ══════════════════════════════════════════════════════════════
+# DASHBOARD HTML — served at /dashboard
+# ══════════════════════════════════════════════════════════════
+DASHBOARD_HTML = '''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0">
+<title>Minty Cards — Arbitrage Hub</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌿</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#F6F7FB;--sf:#FFF;--bd:#E6E9EF;--bl:#F0F1F5;--tx:#1A1F36;--t2:#6B7194;--tm:#9BA1BD;--ac:#00C875;--al:#E6FAF2;--ad:#00A85E;--rd:#E44258;--rl:#FFF0F2;--or:#FDAB3D;--ol:#FFF6E8;--bu:#579BFC;--bul:#EEF4FF;--pu:#A25DDC;--pl:#F4ECFB;--sh:0 1px 3px rgba(26,31,54,.06);--r:10px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--tx);-webkit-tap-highlight-color:transparent}
+
+/* Mobile-first: no sidebar on mobile */
+.sidebar{display:none}
+.main{padding:16px;min-height:100vh}
+
+@media(min-width:768px){
+  .sidebar{display:flex;position:fixed;left:0;top:0;bottom:0;width:230px;background:var(--sf);border-right:1px solid var(--bd);flex-direction:column;z-index:100}
+  .main{margin-left:230px;padding:24px 28px}
+}
+
+.sb-brand{padding:18px 18px 14px;border-bottom:1px solid var(--bl);display:flex;align-items:center;gap:10px}
+.sb-icon{width:32px;height:32px;background:var(--ac);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;color:#fff;font-weight:700}
+.sb-name{font-family:Outfit,sans-serif;font-weight:700;font-size:14.5px}
+.sb-sub{font-size:10.5px;color:var(--tm);margin-top:1px}
+
+.sb-nav{padding:10px 8px;flex:1}
+.sb-label{font-size:9.5px;font-weight:600;color:var(--tm);text-transform:uppercase;letter-spacing:1.2px;padding:8px 12px 4px}
+.sb-item{display:flex;align-items:center;gap:9px;padding:8px 12px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:500;color:var(--t2);transition:.15s;margin-bottom:1px}
+.sb-item:hover{background:var(--bg);color:var(--tx)}
+.sb-item.on{background:var(--al);color:var(--ad);font-weight:600}
+.sb-badge{margin-left:auto;background:var(--ac);color:#fff;font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:10px}
+
+.sb-foot{padding:12px 14px;border-top:1px solid var(--bl);display:flex;align-items:center;gap:8px}
+.sd{width:8px;height:8px;border-radius:50%;background:var(--ac);animation:pls 2s infinite}
+.sd.off{background:var(--rd);animation:none}.sd.sil{background:var(--or)}
+@keyframes pls{0%,100%{opacity:1}50%{opacity:.4}}
+.sf-txt{font-size:11.5px;color:var(--t2)}.sf-txt b{color:var(--tx);font-weight:600}
+
+/* Mobile nav bar */
+.mob-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--sf);border-top:1px solid var(--bd);z-index:100;padding:6px 0}
+.mob-nav .mn{flex:1;text-align:center;padding:8px 0;font-size:10px;font-weight:600;color:var(--tm);cursor:pointer}
+.mob-nav .mn.on{color:var(--ad)}
+.mob-nav .mn .mi{font-size:20px;display:block;margin-bottom:2px}
+@media(min-width:768px){.mob-nav{display:none}}
+
+.ph{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px}
+.pt{font-family:Outfit,sans-serif;font-size:20px;font-weight:700}
+.ps{font-size:12px;color:var(--tm);margin-top:1px}
+.ha{display:flex;gap:6px}
+.btn{display:flex;align-items:center;gap:5px;padding:7px 14px;border-radius:7px;font-size:12.5px;font-weight:600;cursor:pointer;border:1px solid var(--bd);background:var(--sf);color:var(--tx);font-family:'DM Sans',sans-serif;transition:.15s}
+.btn:hover{border-color:var(--ac);color:var(--ac)}
+.btn-p{background:var(--ac);color:#fff;border-color:var(--ac)}
+.btn-p:hover{background:var(--ad);border-color:var(--ad);color:#fff}
+
+.sr{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:18px}
+.sc{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);padding:14px 16px;border-left:3px solid var(--ac)}
+.sc.bl{border-left-color:var(--bu)}.sc.or{border-left-color:var(--or)}.sc.pu{border-left-color:var(--pu)}.sc.rd{border-left-color:var(--rd)}
+.sv{font-family:Outfit,sans-serif;font-size:24px;font-weight:700}
+.sl{font-size:11px;color:var(--tm);margin-top:1px;font-weight:500}
+
+.tb{display:flex;gap:0;margin-bottom:14px;border-bottom:1px solid var(--bd);overflow-x:auto}
+.t{padding:9px 16px;font-size:13px;font-weight:600;color:var(--tm);cursor:pointer;border-bottom:2px solid transparent;transition:.15s;white-space:nowrap}
+.t:hover{color:var(--tx)}.t.on{color:var(--ad);border-bottom-color:var(--ac)}
+.tc{font-size:10px;background:var(--bg);padding:1px 6px;border-radius:7px;margin-left:5px}
+
+.pn{background:var(--sf);border:1px solid var(--bd);border-radius:12px;overflow:hidden;margin-bottom:80px}
+.pnh{padding:12px 16px;border-bottom:1px solid var(--bl);display:flex;align-items:center;justify-content:space-between;font-size:12.5px;font-weight:600}
+.pnh .su{color:var(--tm);font-weight:400;font-size:11.5px}
+
+.dt{width:100%;border-collapse:collapse}
+.dt th{text-align:left;padding:8px 14px;font-size:10px;font-weight:600;color:var(--tm);text-transform:uppercase;letter-spacing:.7px;background:var(--bg);border-bottom:1px solid var(--bd);position:sticky;top:0}
+.dt td{padding:10px 14px;border-bottom:1px solid var(--bl);font-size:13px}
+.dt tr:hover{background:#FAFBFD}
+.dt tr:last-child td{border-bottom:none}
+
+.rb{display:inline-flex;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;letter-spacing:.3px}
+.r-SAR{background:#FFF3E0;color:#E65100}.r-SIR{background:#F3E5F5;color:#7B1FA2}.r-HR{background:#FFF8E1;color:#F57F17}
+.r-IR{background:#E8F5E9;color:#2E7D32}.r-UR{background:#E3F2FD;color:#1565C0}.r-Shiny{background:#E0F7FA;color:#00838F}
+.sb2{padding:2px 7px;border-radius:4px;font-size:10px;font-weight:600}
+.s-tcg{background:var(--bul);color:#2962FF}.s-ebay{background:var(--ol);color:#E65100}
+.pr{font-family:Outfit,sans-serif;font-weight:700;color:var(--ad)}
+.dc{font-weight:600;color:var(--rd)}
+.bl2{display:inline-flex;align-items:center;gap:3px;padding:4px 10px;background:var(--ac);color:#fff;border-radius:5px;font-size:11px;font-weight:600;text-decoration:none;transition:.15s}
+.bl2:hover{background:var(--ad)}
+.bl2.vi{background:var(--bu)}
+
+.to{max-height:460px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.le{padding:5px 14px;font-size:12px;display:flex;gap:8px;align-items:flex-start}
+.le:hover{background:var(--bg)}
+.lt{color:var(--tm);min-width:50px;font-size:11px}
+.lg{min-width:42px;font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;text-align:center;height:fit-content}
+.g-SYS{background:var(--bul);color:var(--bu)}.g-SCAN{background:var(--bg);color:var(--tm)}.g-PRICE{background:var(--al);color:var(--ad)}
+.g-DEAL{background:var(--ol);color:var(--or)}.g-EBAY{background:var(--pl);color:var(--pu)}.g-TG{background:#E8F5E9;color:#2E7D32}
+.g-ERR{background:var(--rl);color:var(--rd)}.g-API{background:var(--bg);color:var(--tm)}
+.lm{color:var(--t2);word-break:break-word;font-size:11.5px;line-height:1.4}
+
+.es{padding:40px 20px;text-align:center;color:var(--tm)}
+.ei{font-size:32px;margin-bottom:8px;opacity:.5}
+.et{font-size:14px;font-weight:600;color:var(--t2);margin-bottom:3px}
+.ed{font-size:12px}
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sb-brand"><div class="sb-icon">M</div><div><div class="sb-name">Minty Cards</div><div class="sb-sub">Arbitrage Hub v3.3</div></div></div>
+  <nav class="sb-nav">
+    <div class="sb-label">Views</div>
+    <div class="sb-item on" onclick="go('deals')">⚡ Deals <span class="sb-badge" id="nDeal">0</span></div>
+    <div class="sb-item" onclick="go('prices')">📊 All Prices <span class="sb-badge" style="background:var(--bu)" id="nPrice">0</span></div>
+    <div class="sb-item" onclick="go('log')">📋 Agent Log</div>
+    <div class="sb-label" style="margin-top:10px">Sources</div>
+    <div class="sb-item" style="cursor:default">🟢 TCGPlayer</div>
+    <div class="sb-item" style="cursor:default"><span id="eDot">🟢</span> eBay</div>
+  </nav>
+  <div class="sb-foot"><div class="sd" id="sDot"></div><div class="sf-txt"><b id="sLab">Connecting...</b><br><span id="sSub"></span></div></div>
+</aside>
+
+<div class="mob-nav">
+  <div class="mn on" id="m-deals" onclick="go('deals')"><span class="mi">⚡</span>Deals</div>
+  <div class="mn" id="m-prices" onclick="go('prices')"><span class="mi">📊</span>Prices</div>
+  <div class="mn" id="m-log" onclick="go('log')"><span class="mi">📋</span>Log</div>
+  <div class="mn" id="m-hunt" onclick="hunt()"><span class="mi">🎯</span>Hunt</div>
+</div>
+
+<div class="main">
+  <div class="ph">
+    <div><div class="pt" id="pT">Deals</div><div class="ps" id="pS">Real-time arbitrage opportunities</div></div>
+    <div class="ha"><button class="btn" onclick="load()">🔄 Refresh</button><button class="btn btn-p" onclick="hunt()">⚡ Hunt Now</button></div>
+  </div>
+
+  <div class="sr">
+    <div class="sc"><div class="sv" id="xDeals">—</div><div class="sl">Active Deals</div></div>
+    <div class="sc bl"><div class="sv" id="xPrices">—</div><div class="sl">Prices Tracked</div></div>
+    <div class="sc or"><div class="sv" id="xAlerts">—</div><div class="sl">Alerts Sent</div></div>
+    <div class="sc pu"><div class="sv" id="xEbay">—</div><div class="sl">eBay Deals</div></div>
+    <div class="sc rd"><div class="sv" id="xScans">—</div><div class="sl">Scans</div></div>
+  </div>
+
+  <div class="tb">
+    <div class="t on" id="tDeals" onclick="go('deals')">⚡ Deals <span class="tc" id="tcD">0</span></div>
+    <div class="t" id="tPrices" onclick="go('prices')">📊 Prices <span class="tc" id="tcP">0</span></div>
+    <div class="t" id="tLog" onclick="go('log')">📋 Log</div>
+  </div>
+
+  <div class="pn" id="pDeals">
+    <div class="pnh"><span>Arbitrage Opportunities</span><span class="su">20%+ below · min $5 profit</span></div>
+    <div id="cDeals"><div class="es"><div class="ei">⚡</div><div class="et">Scanning for deals...</div><div class="ed">Agent is running. Deals appear here when found.</div></div></div>
+  </div>
+
+  <div class="pn" id="pPrices" style="display:none">
+    <div class="pnh"><span>All Card Prices</span><span class="su" id="pLast">—</span></div>
+    <div style="overflow-x:auto" id="cPrices"><div class="es"><div class="ei">📊</div><div class="et">Loading prices...</div></div></div>
+  </div>
+
+  <div class="pn" id="pLog" style="display:none">
+    <div class="pnh"><span>Agent Log</span><span class="su" id="lCnt">0 entries</span></div>
+    <div class="to" id="cLog"></div>
+  </div>
+</div>
+
+<script>
+const A=window.location.origin;
+let cur='deals';
+
+function go(t){
+  cur=t;
+  ['deals','prices','log'].forEach(v=>{
+    const on=v===t;
+    const el=document.getElementById('p'+v.charAt(0).toUpperCase()+v.slice(1));
+    if(el)el.style.display=on?'':'none';
+    const tab=document.getElementById('t'+v.charAt(0).toUpperCase()+v.slice(1));
+    if(tab){tab.classList.toggle('on',on)}
+    const mob=document.getElementById('m-'+v);
+    if(mob)mob.classList.toggle('on',on);
+  });
+  document.querySelectorAll('.sb-item').forEach(n=>n.classList.remove('on'));
+  document.querySelectorAll('.sb-item').forEach(n=>{if(n.textContent.toLowerCase().includes(t==='deals'?'deals':t==='prices'?'prices':'log'))n.classList.add('on')});
+  const T={deals:['Deals','Real-time arbitrage opportunities'],prices:['All Prices','TCGPlayer market data across 12 sets'],log:['Agent Log','Live activity feed']};
+  document.getElementById('pT').textContent=T[t][0];
+  document.getElementById('pS').textContent=T[t][1];
+}
+
+async function f(ep){try{const r=await fetch(A+ep);if(!r.ok)throw 0;return r.json()}catch(e){return null}}
+function e(s){if(!s)return'';const d=document.createElement('div');d.textContent=String(s);return d.innerHTML}
+
+async function loadStatus(){
+  const d=await f('/status');if(!d)return;
+  document.getElementById('xDeals').textContent=d.deals||0;
+  document.getElementById('xPrices').textContent=d.total_checked||0;
+  document.getElementById('xAlerts').textContent=d.alerts_sent||0;
+  document.getElementById('xEbay').textContent=d.ebay_deals||0;
+  document.getElementById('xScans').textContent=d.scan_count||0;
+  const dot=document.getElementById('sDot'),lab=document.getElementById('sLab'),sub=document.getElementById('sSub');
+  if(d.running){dot.className='sd';lab.textContent='Scanning...';sub.textContent='Batch '+d.batch}
+  else if(d.mode&&d.mode.includes('SILENT')){dot.className='sd sil';lab.textContent='Silent Scan';sub.textContent='Pre-marking'}
+  else{dot.className='sd';lab.textContent='Live';sub.textContent=d.last_scan==='never'?'Waiting...':'Last: '+d.last_scan}
+  document.getElementById('eDot').textContent=d.ebay==='connected'?'🟢':'🔴';
+}
+
+async function loadDeals(){
+  const d=await f('/deals');if(!d||!d.deals)return;
+  document.getElementById('nDeal').textContent=d.deals.length;
+  document.getElementById('tcD').textContent=d.deals.length;
+  if(!d.deals.length){document.getElementById('cDeals').innerHTML='<div class="es"><div class="ei">✅</div><div class="et">No active deals right now</div><div class="ed">Agent is monitoring. You\\\'ll see deals here when they appear.</div></div>';return}
+  let h='<table class="dt"><thead><tr><th>Card</th><th>Set</th><th>Rarity</th><th>Market</th><th>Price</th><th>Off</th><th>Profit</th><th>Src</th><th></th></tr></thead><tbody>';
+  d.deals.forEach(x=>{
+    const rc='r-'+(x.rarity||'').replace(/[^a-zA-Z]/g,'');
+    const sc=x.source==='eBay'?'s-ebay':'s-tcg';
+    h+=`<tr><td><b>${e(x.card)}</b></td><td style="font-size:12px;color:var(--t2)">${e(x.set)}</td><td><span class="rb ${rc}">${e(x.rarity)}</span></td><td>$${x.market_price}</td><td><b>$${x.low_price}</b></td><td class="dc">${x.discount_pct}%</td><td class="pr">$${x.net_profit}</td><td><span class="sb2 ${sc}">${e(x.source||'TCG')}</span></td><td>${x.url?`<a href="${e(x.url)}" target="_blank" class="bl2">⚡Buy</a>`:''}</td></tr>`;
+  });
+  h+='</tbody></table>';
+  document.getElementById('cDeals').innerHTML=h;
+}
+
+async function loadPrices(){
+  const d=await f('/prices');if(!d||!d.prices)return;
+  document.getElementById('nPrice').textContent=d.prices.length;
+  document.getElementById('tcP').textContent=d.prices.length;
+  if(!d.prices.length)return;
+  let h='<table class="dt"><thead><tr><th>Card</th><th>Set</th><th>Rarity</th><th>Market</th><th>Low</th><th>Spread</th><th></th></tr></thead><tbody>';
+  d.prices.forEach(p=>{
+    const rc='r-'+(p.rarity||'').replace(/[^a-zA-Z]/g,'');
+    const sp=p.market>0?Math.round((p.market-p.low)/p.market*100):0;
+    const spc=sp>=20?'background:var(--al);color:var(--ad)':'background:var(--bg);color:var(--tm)';
+    h+=`<tr><td><b>${e(p.card)}</b></td><td style="font-size:12px;color:var(--t2)">${e(p.set)}</td><td><span class="rb ${rc}">${e(p.rarity)}</span></td><td style="font-weight:600">$${p.market}</td><td style="color:var(--ad);font-weight:500">$${p.low}</td><td><span style="font-size:10px;padding:2px 6px;border-radius:4px;font-weight:600;${spc}">${sp}%</span></td><td>${p.tcgplayer_url?`<a href="${e(p.tcgplayer_url)}" target="_blank" class="bl2 vi">View</a>`:''}</td></tr>`;
+  });
+  h+='</tbody></table>';
+  document.getElementById('cPrices').innerHTML=h;
+}
+
+async function loadLog(){
+  const d=await f('/log');if(!d||!d.length)return;
+  document.getElementById('lCnt').textContent=d.length+' entries';
+  let h='';
+  [...d].reverse().forEach(x=>{
+    const gc='g-'+(x.tag||'SYS');
+    h+=`<div class="le"><span class="lt">${e(x.time)}</span><span class="lg ${gc}">${e(x.tag)}</span><span class="lm">${e(x.msg)}</span></div>`;
+  });
+  document.getElementById('cLog').innerHTML=h;
+}
+
+async function hunt(){const r=await f('/hunt');if(r)setTimeout(load,3000)}
+function load(){loadStatus();loadDeals();loadPrices();loadLog()}
+load();
+setInterval(load,30000);
+</script>
+</body>
+</html>'''
 
 # ── Rarity keywords for eBay search ──
 RARITY_EBAY_KEYWORDS = {
@@ -489,6 +744,10 @@ def index():
 @app.route("/ping")
 def ping():
     return "pong"
+
+@app.route("/dashboard")
+def dashboard():
+    return Response(DASHBOARD_HTML, mimetype='text/html')
 
 @app.route("/status")
 def get_status():
